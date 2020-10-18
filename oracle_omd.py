@@ -42,11 +42,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torchvision
+import torchvision.transforms as transforms
 import pandas as pd
 import os
 import json
+from oc_data_load import CIFAR10_Data
 
-def load_known_unknown(split_num=0):
+def known_unknown_split(split=0):
     ''' 
     Known/Unknown split semantics can be found in download_cifar10.py
     in the following git repo:
@@ -54,14 +56,26 @@ def load_known_unknown(split_num=0):
 
     I use a modified download script to produce the files that I'm
     loading here via Pandas: download_cifar10_to_csv.py
+
+    NOTE: There are 5 possible splits that can be used here,
+          the default split number is 0 unless specified otherwise.
     '''
+    #known_frame = pd.read_csv('data/cifar10-split{}a.dataset'.format(split))
+    #unknown_frame = pd.read_csv('data/cifar10-split{}b.dataset'.format(split))
+    known_data = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
+                              root_dir='data/cifar10', transform=transforms.ToTensor())
+    unknown_data = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
+                              root_dir='data/cifar10', transform=transforms.ToTensor())
+    # TODO: Now LOAD the data
     
+    return known_data, unknown_data
 
 def main():
     # Load known and unknown classes (*a is known *b is unknown)
-    known, unknown = load_known_unknown()
+    known, unknown = known_unknown_split()
+    print((known.__getitem__(0)).shape)
     # binary or multiclass category detector??
-    pass
+    
 
 if __name__ == '__main__':
     main()

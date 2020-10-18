@@ -3,13 +3,27 @@ import numpy as np
 import torch
 import torchvision
 import torchvision.transforms as transforms
+from torch.utils.data import Dataset, DataLoader
 import pandas as pd
+import os
+from skimage import io, transform
 
-class oc_cifar10_data_loader():
-    def __init__(self):
-        self.classes = ('airplane', 'car', 'bird', 'cat', 'deer', 'dog',
-            'frog', 'horse', 'ship', 'truck')
-        self.default_unknown = ['airplane', 'cat', 'frog', 'ship']
-        # Can download CIFAR-10 at the url below
-        # https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz
-        
+class CIFAR10_Data(Dataset):
+    '''Loads a subset of CIFAR10 data specified by a csv_file'''
+
+    def __init__(self, csv_file, root_dir, transform=None):
+        self.frame = pd.read_csv(csv_file)
+        self.root_dir = root_dir
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.frame)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        img_name = os.path.join(self.root_dir, self.frame.iloc[idx,0])
+        image = io.imread(img_name)
+
+        return image

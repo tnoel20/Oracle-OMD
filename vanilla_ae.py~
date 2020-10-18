@@ -62,7 +62,7 @@ def train(model, tr_data, num_epochs=5, batch_size=64, learning_rate=1e-3):
         outputs.append((epoch, img, recon),)
     return outputs
 
-# TODO: Fix this...
+
 def compute_test_loss(model, data_loader, device):
     criterion = nn.MSELoss()
     outputs = []
