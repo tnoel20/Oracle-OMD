@@ -11,8 +11,10 @@ from skimage import io, transform
 class CIFAR10_Data(Dataset):
     '''Loads a subset of CIFAR10 data specified by a csv_file'''
 
-    def __init__(self, csv_file, root_dir, transform=None):
+    def __init__(self, csv_file, root_dir, fold=None, transform=None):
         self.frame = pd.read_csv(csv_file)
+        if fold is not None:
+            self.frame = self.frame[self.frame['fold'] == fold]
         self.root_dir = root_dir
         self.transform = transform
 
@@ -25,5 +27,11 @@ class CIFAR10_Data(Dataset):
 
         img_name = os.path.join(self.root_dir, self.frame.iloc[idx,0])
         image = io.imread(img_name)
+        # metadata = self.frame.iloc[idx, 1:]
+        # sample = {'image': image, 'metadata': metadata}
+        sample = image
 
-        return image
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample

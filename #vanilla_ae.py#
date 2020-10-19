@@ -108,6 +108,22 @@ def training_progression(outputs):
             plt.imshow(item[0])
     plt.show()
 
+
+def get_vanilla_E():
+    CIFAR10_DIM = 32*32
+    NUM_EPOCHS = 20
+
+    cifar_tr_data = datasets.CIFAR10(
+        'data', train=True, download=True, transform=transforms.ToTensor()
+    )
+    cifar_test_data = datasets.CIFAR10(
+        'data', train=False, download=True, transform=transforms.ToTensor()
+    )
+
+    model = Autoencoder()
+    max_epochs = 20
+    outputs = train(model, cifar_tr_data, num_epochs=max_epochs)
+
 '''
 def main():
     CIFAR10_DIM = 32*32

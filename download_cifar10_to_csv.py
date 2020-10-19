@@ -47,8 +47,14 @@ def main():
         test_data.extend(vals[b'data'])
 
     examples = []
-    for lab, fn, dat in tqdm(zip(train_labels, train_filenames, train_data)):
-        example = make_example(lab, fn, dat, 'train')
+    num_test = len(test_data)
+    num_train = len(train_data)
+    #for lab, fn, dat in tqdm(zip(train_labels, train_filenames, train_data)):
+    for i, (lab, fn, dat) in enumerate(tqdm(zip(train_labels, train_filenames, train_data))):
+        if i < (num_train - num_test):
+            example = make_example(lab, fn, dat, 'train')
+        else:
+            example = make_example(lab, fn, dat, 'val')
         #example['fold'] = 'train'
         examples.append(example)
 
@@ -153,7 +159,7 @@ def train_test_split(filename):
 
 def save_image_dataset(examples, output_filename):
     fp = open(output_filename, 'w')
-    fp.write('filename, label, is_animal, is_flying, is_pet, fold'+'\n')
+    fp.write('filename,label,is_animal,is_flying,is_pet,fold'+'\n')
     for line in examples:
         fp.write('{}'.format(line) + '\n')
     fp.close()

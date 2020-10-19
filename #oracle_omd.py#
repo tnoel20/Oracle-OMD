@@ -28,18 +28,27 @@ def known_unknown_split(split=0, normalize=False):
         # Just this by default
         transform = T.ToTensor()
         
-    known_train   = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
+    kn_train   = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
                                 root_dir='data/cifar10', fold='train',
                                 transform=transform)
-    known_test    = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
+    kn_val    = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
+                                root_dir='data/cifar10', fold='val',
+                                transform=transform)
+    kn_test    = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
                                 root_dir='data/cifar10', fold='test',
                                 transform=transform)
-    unknown_train = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
+    
+    ukn_tr = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
                                 root_dir='data/cifar10', fold='train',
                                 transform=transform)
-    unknown_test  = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
+    ukn_val  = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
+                                root_dir='data/cifar10', fold='val',
+                                transform=transform)
+    ukn_test  = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
                                 root_dir='data/cifar10', fold='test',
                                 transform=transform)
+
+    
     
     return known_train, known_test, unknown_train, unknown_test
 
@@ -51,7 +60,8 @@ def omd():
     pass
 
 
-def kfold():
+def train_oracle_latent_rep():
+    if 
     pass
 
 
