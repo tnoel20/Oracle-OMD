@@ -6,8 +6,9 @@ import torchvision.transforms as T
 import pandas as pd
 import os
 from oc_data_load import CIFAR10_Data
+from vanilla_ae import get_vanilla_ae
 
-def known_unknown_split(split=0, normalize=False):
+def load_data(split=0, normalize=False):
     ''' 
     Known/Unknown split semantics can be found in download_cifar10.py
     in the following git repo:
@@ -28,20 +29,28 @@ def known_unknown_split(split=0, normalize=False):
         # Just this by default
         transform = T.ToTensor()
         
-    known_train   = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
+    kn_train   = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
                                 root_dir='data/cifar10', fold='train',
                                 transform=transform)
-    known_test    = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
-                                root_dir='data/cifar10', fold='test',
+    kn_val    = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
+                                root_dir='data/cifar10', fold='val',
                                 transform=transform)
-    unknown_train = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
-                                root_dir='data/cifar10', fold='train',
-                                transform=transform)
-    unknown_test  = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
+    kn_test    = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
                                 root_dir='data/cifar10', fold='test',
                                 transform=transform)
     
-    return known_train, known_test, unknown_train, unknown_test
+    unkn_train = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
+                                root_dir='data/cifar10', fold='train',
+                                transform=transform)
+    unkn_val  = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
+                                root_dir='data/cifar10', fold='val',
+                                transform=transform)
+    unkn_test  = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
+                                root_dir='data/cifar10', fold='test',
+                                transform=transform)
+
+    
+    return (kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test)
 
 
 def omd():
@@ -51,8 +60,17 @@ def omd():
     pass
 
 
-def kfold():
+def train_oracle_latent_rep():
     pass
+
+
+def get_known_ae(kn_train, kn_val, filename='vanilla_ae.pth'):
+    CIFAR10_DIM = 32*32
+    NUM_EPOCHS = 20
+
+    device = torch.device("cuda")
+    model = get_vanilla_ae(kn_train, kn_val, filename)
+    print(model.state_dict())
 
 
 def get_weight_prior():
@@ -61,9 +79,11 @@ def get_weight_prior():
 
 
 def main():
-    # Load known and unknown classes (*a is known *b is unknown)
-    train_known, test_known, train_unknown, test_unknown = known_unknown_split()
+    # Load known and unknown classes
+    kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test = load_data()
+    
     # binary or multiclass category detector??
-
+    get_known_ae(kn_train, kn_val)
+    
 if __name__ == '__main__':
     main()

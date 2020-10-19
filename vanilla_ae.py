@@ -3,9 +3,11 @@ import torchvision
 import torch.nn as nn
 import torch.optim as optim
 import scipy
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 from torchvision import datasets, transforms
 
 # Implement autoencoder with several different latent
@@ -39,19 +41,24 @@ class Autoencoder(nn.Module):
         return self.encoder(x)
 
 
-def train(model, tr_data, num_epochs=5, batch_size=64, learning_rate=1e-3):
+def train(model, tr_data, val, num_epochs=5, learning_rate=1e-3):#batch_size=64 
     torch.manual_seed(42)
     criterion = nn.MSELoss() # mean square error loss
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=learning_rate, 
                                  weight_decay=1e-5) # <--
-    train_loader = torch.utils.data.DataLoader(tr_data, 
-                                               batch_size=batch_size, 
-                                               shuffle=True)
+    #train_loader = torch.utils.data.DataLoader(tr_data, 
+                                               #batch_size=batch_size, 
+                                               #shuffle=True)
     outputs = []
-    for epoch in range(num_epochs):
-        for data in train_loader:
-            img, _ = data
+    epoch = 1
+    # Initial conditions
+    val_loss = [1E6, 0]
+    EPS = 0.5
+    #for epoch in range(num_epochs):
+    while math.abs(val_loss_list[epoch] - val_loss_list[epoch-1]) > EPS and epoch < num_epochs:
+        for img in train_data:
+            #img, _ = data
             recon = model(img)
             loss = criterion(recon, img)
             loss.backward()
@@ -60,14 +67,18 @@ def train(model, tr_data, num_epochs=5, batch_size=64, learning_rate=1e-3):
 
         print('Epoch:{}, Loss:{:.4f}'.format(epoch+1, float(loss)))
         outputs.append((epoch, img, recon),)
+        val_loss = get_val_loss(model, val, device)
+        val_loss_list.append(val_loss)
+        epoch += 1
     return outputs
 
 # TODO: Fix this...
-def compute_test_loss(model, data_loader, device):
+def get_val_loss(model, val, device):
     criterion = nn.MSELoss()
     outputs = []
     loss = 0
 
+    # TODO: Update for val. data_loader no longer works here!!!
     for batch_features, _ in data_loader:
         img = batch_features
         # Reshape mini-batch data to [N, 32*32] matrix
@@ -108,8 +119,35 @@ def training_progression(outputs):
             plt.imshow(item[0])
     plt.show()
 
-'''
-def main():
+
+def get_vanilla_ae(train=None, val=None, filename=None):
+    CIFAR10_DIM = 32*32
+    NUM_EPOCHS = 20
+
+    #cifar_tr_data = datasets.CIFAR10(
+    #    'data', train=True, download=True, transform=transforms.ToTensor()
+    #)
+    #cifar_test_data = datasets.CIFAR10(
+    #    'data', train=False, download=True, transform=transforms.ToTensor()
+    #)
+
+    if filename is not None and os.path.isfile(filename):
+        # Load model
+        model = Autoencoder() #.to(device)?
+        model.load_state_dict(torch.load(filename))
+        model.eval()
+    else:
+        # Train model
+        device = torch.device("cuda")
+        model = Autoencoder().to(device)
+        # TODO: modify the train function to train until it reaches
+        # a certain level of validation accuracy
+        outputs = train(model, train, val, num_epochs=NUM_EPOCHS)
+        torch.save(model.state_dict(), 'vanilla_ae.pth')
+        return model
+
+    '''
+    def main():
     CIFAR10_DIM = 32*32
     NUM_EPOCHS = 20
 
@@ -178,16 +216,13 @@ def main():
 
     plt.show()
     
-    
-    
     torch.save({'epoch': NUM_EPOCHS,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': loss,
                }, 'autoencoder_save.pth')
-    '''
-
-    '''
+    
+    
     ############################################################################
     l_model = Autoencoder(input_shape=CIFAR10_DIM, hid_units=hidden_dim) #.to(device)
     l_optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -197,7 +232,7 @@ def main():
     l_optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
     loss = checkpoint['loss']
-    '''
+    
     
     # TODO Create Encoder Class and Decoder classes, then save trained Encoder?
     # AND/OR tinker with state_dict to determine if a subset of layers can
@@ -205,7 +240,7 @@ def main():
 
     
     ############################################################################
-    '''
+
     hidden_units = [2, 4, 6, 8, 10, 12, 16, 20, 25, 30, 32, 40, 45, 50, \
                     60, 64, 70, 80, 90, 100, 110, 120, 128]
     losses = []
@@ -233,6 +268,6 @@ def main():
     plt.show()
     
     
-if __name__ == '__main__':
-    main()
+    if __name__ == '__main__':
+        main()
     '''
