@@ -5,6 +5,7 @@ import torchvision
 import torchvision.transforms as T
 import pandas as pd
 import os
+
 from oc_data_load import CIFAR10_Data
 from vanilla_ae import get_vanilla_ae
 
@@ -49,7 +50,13 @@ def load_data(split=0, normalize=False):
                                 root_dir='data/cifar10', fold='test',
                                 transform=transform)
 
-    
+    #kn_train = torch.utils.data.DataLoader(kn_train, batch_size=4, pin_memory=True)
+    #kn_val = torch.utils.data.DataLoader(kn_val, batch_size=4, pin_memory=True)
+    #kn_test = torch.utils.data.DataLoader(kn_test, batch_size=4, pin_memory=True)
+    #unkn_train = torch.utils.data.DataLoader(unkn_train, batch_size=4, pin_memory=True)
+    #unkn_val = torch.utils.data.DataLoader(unkn_val, batch_size=4, pin_memory=True)
+    #unkn_test = torch.utils.data.DataLoader(unkn_test, batch_size=4, pin_memory=True)
+
     return (kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test)
 
 
@@ -64,13 +71,13 @@ def train_oracle_latent_rep():
     pass
 
 
-def get_known_ae(kn_train, kn_val, filename='vanilla_ae.pth'):
+def get_plain_ae(kn_train, kn_val, filename='plain_ae.pth'):
     CIFAR10_DIM = 32*32
     NUM_EPOCHS = 20
-
-    device = torch.device("cuda")
+    
+    #device = torch.device("cuda")
     model = get_vanilla_ae(kn_train, kn_val, filename)
-    print(model.state_dict())
+    return model
 
 
 def get_weight_prior():
@@ -79,11 +86,19 @@ def get_weight_prior():
 
 
 def main():
-    # Load known and unknown classes
-    kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test = load_data()
+    # Get datasets of known and unknown classes
+    kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test = load_data(0)
     
     # binary or multiclass category detector??
-    get_known_ae(kn_train, kn_val)
+    kn_ae = get_plain_ae(kn_train, kn_val,'kn_std_ae_split_{}.pth'.format(0))
+
+    # Training plain autoencoder on all training data
+    kn_unkn_train = torch.utils.data.ConcatDataset([kn_train,unkn_train])
+    kn_unkn_val   = torch.utils.data.ConcatDataset([kn_val,  unkn_val  ])
+    kn_unkn_ae = get_plain_ae(kn_unkn_train, kn_unkn_val,'kn_unkn_std_ae_split_{}.pth'.format(0))
+    
+    # build training set (X, y) for supervised latent classifier
+    
     
 if __name__ == '__main__':
     main()

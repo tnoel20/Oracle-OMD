@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 from torchvision import datasets, transforms
+from oc_data_load import CIFAR10_Data
 
 # Implement autoencoder with several different latent
 # layer sizes. Train on CIFAR-10.
@@ -41,33 +42,30 @@ class Autoencoder(nn.Module):
         return self.encoder(x)
 
 
-def train(model, tr_data, val, num_epochs=5, learning_rate=1e-3):#batch_size=64 
+def train(model, device, tr_data, val, num_epochs=5, learning_rate=1e-3):#batch_size=64 
     torch.manual_seed(42)
     criterion = nn.MSELoss() # mean square error loss
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=learning_rate, 
                                  weight_decay=1e-5) # <--
-    #train_loader = torch.utils.data.DataLoader(tr_data, 
-                                               #batch_size=batch_size, 
-                                               #shuffle=True)
     outputs = []
     epoch = 1
     # Initial conditions
-    val_loss = [1E6, 0]
-    EPS = 0.5
+    val_loss_list = [1E6, 0]
+    EPS = 1e-3
     #for epoch in range(num_epochs):
-    while math.abs(val_loss_list[epoch] - val_loss_list[epoch-1]) > EPS and epoch < num_epochs:
-        for img in train_data:
-            #img, _ = data
-            recon = model(img)
-            loss = criterion(recon, img)
+    while abs(val_loss_list[epoch] - val_loss_list[epoch-1]) > EPS and epoch < num_epochs:
+        for i,img_batch in enumerate(tr_data):
+            img_batch = img_batch.to(device)
+            recon = model(img_batch)
+            loss = criterion(recon, img_batch)
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
 
-        print('Epoch:{}, Loss:{:.4f}'.format(epoch+1, float(loss)))
-        outputs.append((epoch, img, recon),)
-        val_loss = get_val_loss(model, val, device)
+        print('Epoch:{}, Loss:{:.4f}'.format(epoch, float(loss)))
+        outputs.append((epoch, img_batch, recon),)
+        _, val_loss = get_val_loss(model, val, device)
         val_loss_list.append(val_loss)
         epoch += 1
     return outputs
@@ -79,26 +77,25 @@ def get_val_loss(model, val, device):
     loss = 0
 
     # TODO: Update for val. data_loader no longer works here!!!
-    for batch_features, _ in data_loader:
-        img = batch_features
+    for img_batch in val:
         # Reshape mini-batch data to [N, 32*32] matrix
         # Load it to the active device
-        batch_features = batch_features.view(-1, 32*32).to(device)
-
+        # batch_features = batch_features.view(-1, 32*32).to(device)
+        img_batch = img_batch.to(device)
         # compute reconstructions
-        reconstruction = model(batch_features)
+        reconstruction = model(img_batch)
 
         # compute training reconstruction loss
-        test_loss = criterion(reconstruction, batch_features)
+        test_loss = criterion(reconstruction, img_batch)
 
         # add the mini-batch training loss to epoch loss
         loss += test_loss.item()
 
     # Compute the epoch training loss
-    loss = loss / len(data_loader)
+    loss = loss / len(val)
     # display the epoch test loss
-    print("test loss = {:.6f}".format(loss))
-    outputs.append((_,img,reconstruction),)
+    print("dev loss = {:.6f}".format(loss))
+    outputs.append((None,img_batch,reconstruction),)
 
     return outputs, loss
     
@@ -120,34 +117,29 @@ def training_progression(outputs):
     plt.show()
 
 
-def get_vanilla_ae(train=None, val=None, filename=None):
+def get_vanilla_ae(tr=None, val=None, filename='plain_ae.pth'):
     CIFAR10_DIM = 32*32
     NUM_EPOCHS = 20
 
-    #cifar_tr_data = datasets.CIFAR10(
-    #    'data', train=True, download=True, transform=transforms.ToTensor()
-    #)
-    #cifar_test_data = datasets.CIFAR10(
-    #    'data', train=False, download=True, transform=transforms.ToTensor()
-    #)
+    tr_loader = torch.utils.data.DataLoader(tr, batch_size=4, shuffle=True, pin_memory=True)
+    val_loader = torch.utils.data.DataLoader(val, batch_size=4, shuffle=True, pin_memory=True)
 
-    if filename is not None and os.path.isfile(filename):
+    if os.path.isfile(filename):
         # Load model
-        model = Autoencoder() #.to(device)?
+        model = Autoencoder()
         model.load_state_dict(torch.load(filename))
         model.eval()
     else:
         # Train model
-        device = torch.device("cuda")
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model = Autoencoder().to(device)
-        # TODO: modify the train function to train until it reaches
-        # a certain level of validation accuracy
-        outputs = train(model, train, val, num_epochs=NUM_EPOCHS)
-        torch.save(model.state_dict(), 'vanilla_ae.pth')
+        # train and val are dataloaders
+        outputs = train(model, device, tr_loader, val_loader, num_epochs=NUM_EPOCHS)
+        torch.save(model.state_dict(), filename)
         return model
 
-    '''
-    def main():
+'''
+def main():
     CIFAR10_DIM = 32*32
     NUM_EPOCHS = 20
 
@@ -268,6 +260,6 @@ def get_vanilla_ae(train=None, val=None, filename=None):
     plt.show()
     
     
-    if __name__ == '__main__':
-        main()
-    '''
+if __name__ == '__main__':
+    main()
+'''
