@@ -4,10 +4,11 @@ import torch
 import torchvision
 import torchvision.transforms as T
 import pandas as pd
+from pyod.models.loda import LODA
 import os
-
 from oc_data_load import CIFAR10_Data
 from vanilla_ae import get_vanilla_ae
+
 
 def load_data(split=0, normalize=False):
     ''' 
@@ -80,9 +81,46 @@ def get_plain_ae(kn_train, kn_val, filename='plain_ae.pth'):
     return model
 
 
-def get_weight_prior():
-    '''TODO: Either use LODA or Isolation Forest'''
-    pass
+def get_weight_prior(X_val_latent):
+    '''
+    Get weight vector prior using LODA (Pevny16)
+    
+    Parameters
+    ----------
+    X_val_latent : numpy array
+        Describes the latent representation of images in the
+        validation set. Note: This contains known and unknown
+        examples.
+
+    Returns
+    -------
+    learned weights associated with each latent feature. Used as the
+    prior in training a linear anomaly detector on all classes
+    given latent representation from a model trained on only 6.
+    
+    '''
+    #contamination = 0.4 # 6 known classes, 4 unknown using CIFAR10
+    #n_bin = len()
+    clf_name = 'LODA'
+    clf = LODA()
+    clf.fit(X_val_latent)
+
+    # y_val_latent_pred = clf.labels_ # binary (0: inlier, 1: outlier)
+    # y_train_scores = clf.decision_scores_ # raw outlier scores
+
+    return clf.get_params() # By default deep=True
+
+
+def construct_latent_set(model, raw_dataset):
+    '''Build dataset from latent representation given
+    a model that acts as the encoder and a dataset of
+    raw data that is transformed by the encoder'''
+    loader = torch.utils.data.DataLoader(raw_dataset, batch_size=4, shuffle=True)
+    for img_batch in loader:
+        latent_batch = model.get_latent(img_batch)
+        print(latent_batch)
+    
+    #for img
 
 
 def main():
@@ -96,9 +134,16 @@ def main():
     kn_unkn_train = torch.utils.data.ConcatDataset([kn_train,unkn_train])
     kn_unkn_val   = torch.utils.data.ConcatDataset([kn_val,  unkn_val  ])
     kn_unkn_ae = get_plain_ae(kn_unkn_train, kn_unkn_val,'kn_unkn_std_ae_split_{}.pth'.format(0))
+
+    # Get latent set used to train linear anomaly detector from the
+    # validation set comprised of all classes
+    #X, y = construct_latent_set(kn_ae, kn_unkn_val)
+    construct_latent_set(kn_ae, kn_unkn_val)
     
     # build training set (X, y) for supervised latent classifier
     
+    # Use latent space to train classifier AND as input to scoring function for
+    # open category detector g
     
 if __name__ == '__main__':
     main()
