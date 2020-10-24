@@ -115,10 +115,12 @@ def construct_latent_set(model, raw_dataset):
     '''Build dataset from latent representation given
     a model that acts as the encoder and a dataset of
     raw data that is transformed by the encoder'''
-    loader = torch.utils.data.DataLoader(raw_dataset, batch_size=4, shuffle=True)
+    loader = torch.utils.data.DataLoader(raw_dataset, batch_size=1, shuffle=True)
+    # NOTE: Each image batch consists of one image
     for img_batch in loader:
         latent_batch = model.get_latent(img_batch)
-        print(latent_batch)
+        embedding = latent_batch[0]
+        print(embedding.shape)
     
     #for img
 
@@ -133,7 +135,8 @@ def main():
     # Training plain autoencoder on all training data
     kn_unkn_train = torch.utils.data.ConcatDataset([kn_train,unkn_train])
     kn_unkn_val   = torch.utils.data.ConcatDataset([kn_val,  unkn_val  ])
-    kn_unkn_ae = get_plain_ae(kn_unkn_train, kn_unkn_val,'kn_unkn_std_ae_split_{}.pth'.format(0))
+    kn_unkn_ae = get_plain_ae(kn_unkn_train, kn_unkn_val,
+                              'kn_unkn_std_ae_split_{}.pth'.format(0))
 
     # Get latent set used to train linear anomaly detector from the
     # validation set comprised of all classes

@@ -64,8 +64,69 @@ tutorial/chapter03_intermediate/3_2_2_cnn_resnet_cifar10/
 -> Linear scoring function based on the latent representation of
 a neural network.
 
+-+-+-+-+-+-+-+-+-+-+-+-+-+-+10/22/2020+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+~~~~~~~~~~
+Progress:
+~~~~~~~~~~
+-> Preprocessing
+   - Modified Counterfactual open set data processing scripts
+   to provide nice train, val, test split
+   
+   - Outputs 10 different .csv representing 5 different
+   known/unknown splits
+
+-> Latent Representations
+   - Trained two convolutional autoencoders
+       - 1 on known
+       - 1 on known/unknown (gratuitous?)
+
+-> Working on implementing OMD so that we can train linear
+anomaly detector using latent space representation of "known"
+autoencoder.
+   - If I understand correctly, feedback is provided by looking
+   directly at validation label and determining if training
+   example corresponds to known or unknown class?
+
+-> Using pyod LODA to get prior (prototyped, but not tested; need
+latent dataset first)
+
+-> Working on building latent dataset from "known" autoencoder.
+Doing research on Conv2D semantics to figure this out.
+""torch.Size([1, 64, 2, 2])""
+    - should I squeeze this into a list?
+    - Maybe smaller latent representation... 32x32 -> 32x8 here
 
 ~~~~~~~~~~~
 Questions:
 ~~~~~~~~~~~
 -> Normalization?
+   - For latent rep. models?
+   - For linear anomaly detector?
+
+-> Is the feedback just coming from a known/unknown membership check
+by peeking at the validation .csv?
+
+-> How would you recommend implementing optimization step?
+   - Brute force?
+   - Specialized solver?
+
+-> What is S in OMD algorithm? Is this just any convex set?
+
+-> Would you suggest building dataframe that holds all latent
+representations with 'known'/'unknown' classification in
+first column?
+    - Does starting with binary case seem reasonable?
+    - Does OMD anomaly discovery
+
+-+-+-+-+-+-+-+-+-+-+-+-+-+-+10/29/2020+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+~~~~~~~~~~~
+Progress:
+~~~~~~~~~~~
+->
+
+~~~~~~~~~~~
+Questions:
+~~~~~~~~~~~
+->
