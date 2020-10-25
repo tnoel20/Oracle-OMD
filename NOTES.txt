@@ -124,7 +124,10 @@ first column?
 ~~~~~~~~~~~
 Progress:
 ~~~~~~~~~~~
-->
+-> Built latent data representation using known+uknown validation sets
+in preparation for training linear anomaly detector
+    - Currently 256 features per image, but could reduce this
+    if necessary!
 
 ~~~~~~~~~~~
 Questions:

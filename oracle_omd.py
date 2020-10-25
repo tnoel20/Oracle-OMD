@@ -31,25 +31,31 @@ def load_data(split=0, normalize=False):
         # Just this by default
         transform = T.ToTensor()
         
-    kn_train   = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
-                                root_dir='data/cifar10', fold='train',
-                                transform=transform)
-    kn_val    = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
-                                root_dir='data/cifar10', fold='val',
-                                transform=transform)
-    kn_test    = CIFAR10_Data(csv_file='data/cifar10-split{}a.dataset'.format(split),
-                                root_dir='data/cifar10', fold='test',
-                                transform=transform)
+    kn_train   = CIFAR10_Data(root_dir='data/cifar10',
+                              csv_file='data/cifar10-split{}a.dataset'.format(split),
+                              fold='train',
+                              transform=transform)
+    kn_val    = CIFAR10_Data(root_dir='data/cifar10',
+                             csv_file='data/cifar10-split{}a.dataset'.format(split),
+                             fold='val',
+                             transform=transform)
+    kn_test    = CIFAR10_Data(root_dir='data/cifar10',
+                              csv_file='data/cifar10-split{}a.dataset'.format(split),
+                              fold='test',
+                              transform=transform)
     
-    unkn_train = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
-                                root_dir='data/cifar10', fold='train',
-                                transform=transform)
-    unkn_val  = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
-                                root_dir='data/cifar10', fold='val',
-                                transform=transform)
-    unkn_test  = CIFAR10_Data(csv_file='data/cifar10-split{}b.dataset'.format(split),
-                                root_dir='data/cifar10', fold='test',
-                                transform=transform)
+    unkn_train = CIFAR10_Data(root_dir='data/cifar10',
+                              csv_file='data/cifar10-split{}b.dataset'.format(split),
+                              fold='train',
+                              transform=transform)
+    unkn_val  = CIFAR10_Data(root_dir='data/cifar10',
+                             csv_file='data/cifar10-split{}b.dataset'.format(split),
+                             fold='val',
+                             transform=transform)
+    unkn_test  = CIFAR10_Data(root_dir='data/cifar10',
+                              csv_file='data/cifar10-split{}b.dataset'.format(split),
+                              fold='test',
+                              transform=transform)
 
     #kn_train = torch.utils.data.DataLoader(kn_train, batch_size=4, pin_memory=True)
     #kn_val = torch.utils.data.DataLoader(kn_val, batch_size=4, pin_memory=True)
@@ -111,18 +117,64 @@ def get_weight_prior(X_val_latent):
     return clf.get_params() # By default deep=True
 
 
-def construct_latent_set(model, raw_dataset):
+def construct_column_labels(data_sample):
+    '''Builds a list of labels that will be used to label
+    columns in dataframe representing latent data'''
+    num_features = len(data_sample)
+    # This could be, for example, the size of the
+    # latent space representation
+    feature_list = []
+    for i in range(num_features):
+        feature_list.append('f_{}'.format(str(i)))
+        
+    feature_list.append('label')
+    return feature_list
+
+
+def concat_design_and_target(dataset): #, metadata):
+    ''' 
+    Embeds labels with training examples. 
+    Utility for building latent representation dataset
+    '''
+    concat_data = []
+    df = dataset.frame
+    num_examples = len(dataset)
+    for i in range(num_examples):
+        concat_data.append([dataset[i], df.iloc[i]['label']])
+         
+    return concat_data
+
+
+def construct_latent_set(model, kn_dataset, unkn_dataset):
     '''Build dataset from latent representation given
     a model that acts as the encoder and a dataset of
     raw data that is transformed by the encoder'''
-    loader = torch.utils.data.DataLoader(raw_dataset, batch_size=1, shuffle=True)
-    # NOTE: Each image batch consists of one image
-    for img_batch in loader:
-        latent_batch = model.get_latent(img_batch)
-        embedding = latent_batch[0]
-        print(embedding.shape)
+    kn_X_y = concat_design_and_target(kn_dataset)#, metadata)
+    unkn_X_y = concat_design_and_target(unkn_dataset)
+    kn_unkn_X_y = torch.utils.data.ConcatDataset([kn_X_y, unkn_X_y])
+    loader = torch.utils.data.DataLoader(kn_unkn_X_y, batch_size=1, shuffle=True)
+    col_labels_loaded = False
+    col_labels = []
+    embed_list = []
     
-    #for img
+    # NOTE: Each image batch consists of one image
+    for i, (img_batch, label) in enumerate(loader):
+        latent_batch = model.get_latent(img_batch)
+        embedding = torch.reshape(torch.squeeze(latent_batch), (-1,))
+        # TODO: Append this embedding to a pd dataframe with its label
+        if col_labels_loaded == False:
+            col_labels = construct_column_labels(embedding)
+            val_latent_rep_df = pd.DataFrame(columns=col_labels)
+            col_labels_loaded = True
+            print("Populating Latent Dataframe")
+
+        embedding = embedding.tolist()
+        embedding.append(label[0])
+        val_latent_rep_df.loc[i] = embedding
+
+    print("Latent Dataframe Loading Complete")
+    print(val_latent_rep_df)
+    return val_latent_rep_df
 
 
 def main():
@@ -134,6 +186,8 @@ def main():
 
     # Training plain autoencoder on all training data
     kn_unkn_train = torch.utils.data.ConcatDataset([kn_train,unkn_train])
+    # This preserves metadata
+    # MIGHT NOT NEED kn_unkn_val_frame = pd.concat([kn_val.frame, unkn_val.frame])
     kn_unkn_val   = torch.utils.data.ConcatDataset([kn_val,  unkn_val  ])
     kn_unkn_ae = get_plain_ae(kn_unkn_train, kn_unkn_val,
                               'kn_unkn_std_ae_split_{}.pth'.format(0))
@@ -141,7 +195,9 @@ def main():
     # Get latent set used to train linear anomaly detector from the
     # validation set comprised of all classes
     #X, y = construct_latent_set(kn_ae, kn_unkn_val)
-    construct_latent_set(kn_ae, kn_unkn_val)
+    latent_df = construct_latent_set(kn_ae, kn_val, unkn_val)
+
+    # NEXT STEP: Use this latent data to train linear anomaly detector!! :)
     
     # build training set (X, y) for supervised latent classifier
     
