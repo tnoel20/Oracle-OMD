@@ -67,11 +67,81 @@ def load_data(split=0, normalize=False):
     return (kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test)
 
 
-def omd():
+def omd(data, anom_classes, learning_rate=1e-3):
     '''
     Training a linear anomaly detector
+
+    Originally developed to train a linear anomaly
+    detector on latent representations of labeled images
+
+    Parameters
+    ----------
+    data: data instances packed into a dataframe
+
+    anom_classes: a list of classes corresponding
+                  to anomaly classification (should
+                  be a list of unique strings)
     '''
-    pass
+    N = len(data)
+    # TODO: Initialize this with LODA values
+    theta = np.ones(len(data.iloc[0].tolist())-1)
+    # Note that this is usually implemented as an
+    # online algorithm so number of time steps (steps
+    # of this outer loop) are usually ambiguous. Here
+    # we have a dataset of some fixed size, so we
+    # will start by running a single epoch over the
+    # dataset
+    # TODO: Mess around with reducing this number
+    for i in range(N):
+        w = get_nearest_w(theta)
+        d_anom, idx = get_max_anomaly_score(w, data)
+        y = get_feedback(data.iloc[i]['label'], anom_classes)
+        data.drop(data.index[idx])
+        # linear loss function
+        # loss = -y*np.dot(w,d_anom)
+        theta = theta - learning_rate*y*d_anom
+
+    return w
+
+
+def get_feedback(label, anom_classes):
+    '''Checks for membership of label
+    in given set of anomaly classes.
+    If the instance is anomalous,
+    returns 1 else returns -1'''
+    y = -1
+    if label in anom_classes:
+        y = 1
+        
+    return y
+
+        
+def get_max_anomaly_score(w, D):
+    '''Returns the element in the dataset
+    with the largest anomaly score    '''
+    N = len(D)
+    x_curr = np.dot(-w, D.iloc[0].drop('label').to_numpy())
+    x_max = x_curr
+    for i in range(N):
+        x_curr = np.dot(-w, D.iloc[i].drop('label').to_numpy())
+        if x_curr > x_max:
+            x_max = x_curr
+            idx = i
+
+    return x_max, idx
+
+
+def get_nearest_w(theta):
+    '''Returns the weight vector in the space
+    of d-dimensional vectors with positive real 
+    numbers that is closest to the given theta'''
+    return relu(theta)
+
+
+def relu(x):
+    '''Just makes negative elements 0'''
+    x[x < 0] = 0
+    return x
 
 
 def train_oracle_latent_rep():
@@ -178,8 +248,27 @@ def construct_latent_set(model, kn_dataset, unkn_dataset):
 
 
 def main():
+    CIFAR_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
+                 'dog', 'frog', 'horse', 'ship', 'truck']
+
+    SPLIT = 0
+    
+    # The 2nd dimension of this list contains indices of anomalous
+    # classes corresponding to the split index, represented by
+    # the corresponding index in the first dimension
+    #
+    # e.g. SPLIT = 0 means that our anomaly indices are 'cat', 'frog',
+    # 'horse', and 'ship'
+    splits = [
+        [3, 6, 7, 8],
+        [1, 2, 4, 6],
+        [2, 3, 4, 9],
+        [0, 1, 2, 6],
+        [4, 5, 6, 9],
+    ]
+
     # Get datasets of known and unknown classes
-    kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test = load_data(0)
+    kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test = load_data(SPLIT)
     
     # binary or multiclass category detector??
     kn_ae = get_plain_ae(kn_train, kn_val,'kn_std_ae_split_{}.pth'.format(0))
@@ -195,9 +284,14 @@ def main():
     # Get latent set used to train linear anomaly detector from the
     # validation set comprised of all classes
     #X, y = construct_latent_set(kn_ae, kn_unkn_val)
-    latent_df = construct_latent_set(kn_ae, kn_val, unkn_val)
 
+    latent_df = construct_latent_set(kn_ae, kn_val, unkn_val)
+    
     # NEXT STEP: Use this latent data to train linear anomaly detector!! :)
+
+    anom_classes = [CIFAR_CLASSES[i] for i in splits[SPLIT]]
+    w = omd(latent_df, anom_classes)
+    print(w)
     
     # build training set (X, y) for supervised latent classifier
     

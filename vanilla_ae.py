@@ -23,10 +23,14 @@ class Autoencoder(nn.Module):
             nn.ReLU(),
             nn.Conv2d(16, 32, 3, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(32, 64, 7)
+            nn.MaxPool2d(2, stride=2, return_indices=True)
+            #nn.Conv2d(32, 64, 7)
         )
+
+        self.unpool = nn.MaxUnpool2d(2, stride=2, padding=0)
+        
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(64, 32, 7),
+            #nn.ConvTranspose2d(64, 32, 7),
             nn.ReLU(),
             nn.ConvTranspose2d(32, 16, 3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
@@ -35,7 +39,8 @@ class Autoencoder(nn.Module):
         )
         
     def forward(self, x):
-        x = self.encoder(x)
+        x, indices = self.encoder(x)
+        x = self.unpool(x, indices)
         x = self.decoder(x)
         return x
 
