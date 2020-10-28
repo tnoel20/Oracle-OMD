@@ -23,11 +23,11 @@ class Autoencoder(nn.Module):
             nn.ReLU(),
             nn.Conv2d(16, 32, 3, stride=2, padding=1),
             nn.ReLU(),
-            nn.MaxPool2d(2, stride=2, return_indices=True)
+            nn.MaxPool2d(4, stride=4, return_indices=True)
             #nn.Conv2d(32, 64, 7)
         )
 
-        self.unpool = nn.MaxUnpool2d(2, stride=2, padding=0)
+        self.unpool = nn.MaxUnpool2d(4, stride=4, padding=0)
         
         self.decoder = nn.Sequential(
             #nn.ConvTranspose2d(64, 32, 7),
@@ -129,17 +129,15 @@ def get_vanilla_ae(tr=None, val=None, filename='plain_ae.pth'):
 
     tr_loader = torch.utils.data.DataLoader(tr, batch_size=4, shuffle=True, pin_memory=True)
     val_loader = torch.utils.data.DataLoader(val, batch_size=4, shuffle=True, pin_memory=True)
-
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = Autoencoder().to(device)
+    
     if os.path.isfile(filename):
         # Load model
-        model = Autoencoder()
         model.load_state_dict(torch.load(filename))
         model.eval()
     else:
         # Train model
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        model = Autoencoder().to(device)
-        # train and val are dataloaders
         outputs = train(model, device, tr_loader, val_loader, num_epochs=NUM_EPOCHS)
         torch.save(model.state_dict(), filename)
 

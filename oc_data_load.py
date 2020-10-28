@@ -36,11 +36,9 @@ class CIFAR10_Data(Dataset):
 
         return sample
 
-
-    
+'''
 class CIFAR10_Data(Dataset):
-'''Loads a subset of CIFAR10 data specified by a csv_file'''
-
+Loads a subset of CIFAR10 data specified by a csv_file
     def __init__(self, root_dir, csv_file, fold=None, transform=None):
         self.frame = pd.read_csv(csv_file)
         if fold is not None:
@@ -54,7 +52,7 @@ class CIFAR10_Data(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
- 
+            
         img_name = os.path.join(self.root_dir, self.frame.iloc[idx,0])
         image = io.imread(img_name)
         # metadata = self.frame.iloc[idx, 1:]
@@ -65,3 +63,4 @@ class CIFAR10_Data(Dataset):
             sample = self.transform(sample)
 
         return sample
+'''

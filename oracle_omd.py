@@ -84,7 +84,7 @@ def omd(data, anom_classes, learning_rate=1e-3):
     '''
     N = len(data)
     # TODO: Initialize this with LODA values
-    theta = np.ones(len(data.iloc[0].tolist())-1)
+    theta = get_weight_prior(data)#np.ones(len(data.iloc[0].tolist())-1)
     # Note that this is usually implemented as an
     # online algorithm so number of time steps (steps
     # of this outer loop) are usually ambiguous. Here
@@ -120,10 +120,11 @@ def get_max_anomaly_score(w, D):
     '''Returns the element in the dataset
     with the largest anomaly score    '''
     N = len(D)
-    x_curr = np.dot(-w, D.iloc[0].drop('label').to_numpy())
+    D_X = D.drop(columns=['label']).to_numpy()
+    x_curr = np.dot(-w, D_X[0])#D_X.iloc[0])
     x_max = x_curr
     for i in range(N):
-        x_curr = np.dot(-w, D.iloc[i].drop('label').to_numpy())
+        x_curr = np.dot(-w, D_X[i])#D_X.iloc[i])
         if x_curr > x_max:
             x_max = x_curr
             idx = i
@@ -178,13 +179,19 @@ def get_weight_prior(X_val_latent):
     #contamination = 0.4 # 6 known classes, 4 unknown using CIFAR10
     #n_bin = len()
     clf_name = 'LODA'
-    clf = LODA()
-    clf.fit(X_val_latent)
+    data = X_val_latent.drop(columns=['label'])
+    num_bins = len(data.iloc[0].tolist())
+    clf = LODA(n_bins=num_bins)
+    model = clf.fit(data)
+    weight_prior = model.histograms_.mean(axis=0)
+    #plt.plot(weight_prior)
+    #plt.show()
+    return weight_prior
 
     # y_val_latent_pred = clf.labels_ # binary (0: inlier, 1: outlier)
     # y_train_scores = clf.decision_scores_ # raw outlier scores
 
-    return clf.get_params() # By default deep=True
+    #return clf.get_params() # By default deep=True
 
 
 def construct_column_labels(data_sample):
@@ -226,10 +233,14 @@ def construct_latent_set(model, kn_dataset, unkn_dataset):
     col_labels_loaded = False
     col_labels = []
     embed_list = []
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     # NOTE: Each image batch consists of one image
     for i, (img_batch, label) in enumerate(loader):
-        latent_batch = model.get_latent(img_batch)
+        # If pooling was used, we get data AND indices, so we
+        # need "don't care" notation as second returned var
+        img_batch = img_batch.to(device)
+        latent_batch, _ = model.get_latent(img_batch)
         embedding = torch.reshape(torch.squeeze(latent_batch), (-1,))
         # TODO: Append this embedding to a pd dataframe with its label
         if col_labels_loaded == False:
@@ -291,7 +302,13 @@ def main():
 
     anom_classes = [CIFAR_CLASSES[i] for i in splits[SPLIT]]
     w = omd(latent_df, anom_classes)
+
+    with open('weights.txt', 'w') as f:
+        f.write(w.__str__())
+
     print(w)
+
+    # NEXT: Test it.
     
     # build training set (X, y) for supervised latent classifier
     

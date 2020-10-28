@@ -130,8 +130,15 @@ in preparation for training linear anomaly detector
     if necessary!
 
 -> Trial 1 took all night, very large weights... Not promising
+    - Fixed
+
+-> Got LODA weight prior by averaging across histograms
 
 ~~~~~~~~~~~
 Questions:
 ~~~~~~~~~~~
-->
+-> RE: LODA weight prior
+    Should weights be inverted here? (i.e. since dealing
+    with histograms, high weights correspond to larger
+    probability of occurrence. Isn't this the opposite of
+    what we are trying to capture?)
