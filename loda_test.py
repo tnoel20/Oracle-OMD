@@ -5,6 +5,7 @@ import torch
 import torchvision
 import torchvision.transforms as T
 import pandas as pd
+import math
 import inspect
 from pyod.models.loda import LODA
 import pyod.utils.data as od
@@ -28,7 +29,7 @@ def get_synth_data(num_points=1000, num_features=128):
     '''
 
 
-def get_weight_prior(X_val_latent):
+def get_weight_prior(X_val_latent, n_bins=10):
     '''
     Get weight vector prior using LODA (Pevny16)
     
@@ -49,7 +50,7 @@ def get_weight_prior(X_val_latent):
     #contamination = 0.4 # 6 known classes, 4 unknown using CIFAR10
     #n_bin = len()
     clf_name = 'LODA'
-    clf = LODA(n_bins=128)
+    clf = LODA(n_bins=n_bins)
     print(X_val_latent.shape)
     return clf.fit(X_val_latent)
 
@@ -61,8 +62,11 @@ def get_weight_prior(X_val_latent):
 
 def main():
     #X_tr, X_te, y_tr, y_te = get_synth_data()
+    num_bins = 10
     synth_data = get_synth_data()
-    clf = get_weight_prior(synth_data)#(X_tr) # bad name... getting classifier here
+    num_features = len(synth_data[0])
+    clf = get_weight_prior(synth_data, n_bins=num_bins)
+    #(X_tr) # bad name... getting classifier here
     y_train_pred = clf.labels_
     y_train_scores = clf.decision_scores_
 
@@ -78,9 +82,42 @@ def main():
     #print(synth_data.shape)
     #plt.imshow(clf.histograms_, cmap='hot', interpolation='nearest')
     #plt.show()
-    #ax = sns.heatmap(clf.histograms_)
-    avg = clf.histograms_.mean(axis=0)
-    plt.plot(avg)
+
+    '''
+    hists = clf.histograms_
+    projs = clf.projections_
+    num_features = len(projs[0])
+    for i in range(num_features):
+        hist_col_ind = math.floor(i*((num_bins-1)/(num_features-1)))
+        print(hist_col_ind)
+        projs[:,i] = np.dot(hists[:,hist_col_ind], projs[:,i])
+    '''
+    num_hists = 100
+    hists = clf.histograms_
+    projs = clf.projections_
+    weights = np.zeros(128)
+    max = 0
+    for bin in range(num_bins):
+        for hist in range(num_hists):
+            if hists[hist,bin] > hists[max,bin]:
+                max = hist
+        weights = np.add(projs[max,:], weights)
+        
+    plt.plot(weights)
+    #plot1 = plt.figure(1)
+    #ax = sns.heatmap(clf.projections_)
+
+    #plot2 = plt.figure(2)
+    #ax2 = sns.heatmap(clf.histograms_)
+
+    #plot3 = plt.figure(3)
+    #avg1 = clf.projections_.mean(axis=0)
+    #plt.plot(avg1)
+    
+    #plot4 = plt.figure(4)
+    #avg2 = clf.histograms_.mean(axis=0)
+    #plt.plot(avg2)
+    
     plt.show()
     #visualize('LODA', X_tr, y_tr, X_te, y_te, y_train_pred,
           #y_test_pred, show_figure=True, save_figure=False)

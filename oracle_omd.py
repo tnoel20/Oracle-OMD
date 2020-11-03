@@ -4,8 +4,10 @@ import torch
 import torchvision
 import torchvision.transforms as T
 import pandas as pd
-from pyod.models.loda import LODA
 import os
+from pyod.models.loda import LODA
+from tqdm import tqdm
+from sklearn.metrics import roc_auc_score, roc_curve
 from oc_data_load import CIFAR10_Data
 from vanilla_ae import get_vanilla_ae
 
@@ -179,13 +181,30 @@ def get_weight_prior(X_val_latent):
     #contamination = 0.4 # 6 known classes, 4 unknown using CIFAR10
     #n_bin = len()
     clf_name = 'LODA'
+    threshold = 0.01
     data = X_val_latent.drop(columns=['label'])
-    num_bins = len(data.iloc[0].tolist())
-    clf = LODA(n_bins=num_bins)
+    #num_bins = len(data.iloc[0].tolist())
+    clf = LODA()#n_bins=num_bins)
     model = clf.fit(data)
-    weight_prior = model.histograms_.mean(axis=0)
+    #weight_prior = model.histograms_.mean(axis=0)
+    #weight_prior = model.projections_.mean(axis=0)
+    #weight_prior[weight_prior < threshold] = 1
+    #weight_prior[weight_prior != 1] = 0
     #plt.plot(weight_prior)
     #plt.show()
+
+    num_hists = 100
+    num_bins = 10
+    hists = clf.histograms_
+    projs = clf.projections_
+    weight_prior = np.zeros(128)
+    max = 0
+    for bin_i in range(num_bins):
+        for hist in range(num_hists):
+            if hists[hist,bin_i] > hists[max,bin_i]:
+                max = hist
+        weight_prior = np.add(projs[max,:], weight_prior)
+    
     return weight_prior
 
     # y_val_latent_pred = clf.labels_ # binary (0: inlier, 1: outlier)
@@ -234,6 +253,8 @@ def construct_latent_set(model, kn_dataset, unkn_dataset):
     col_labels = []
     embed_list = []
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    loader = tqdm(loader)
     
     # NOTE: Each image batch consists of one image
     for i, (img_batch, label) in enumerate(loader):
@@ -258,6 +279,46 @@ def construct_latent_set(model, kn_dataset, unkn_dataset):
     return val_latent_rep_df
 
 
+def test_results(test_data, weights, anom_classes):
+    '''
+    Tests the linear anomaly detector on the test
+    data specified.
+
+    Parameters
+    ----------
+    test_data: Dataframe
+        Contains test data and labels (in final column, entitled 'label')
+
+    weights: numpy array
+        Learned weights of linear anomaly detector
+
+    anom_classes: str list
+        A list of classes deemed anomalous
+
+
+    Returns
+    -------
+    y_hat: numpy array
+        Classifications on a per-example basis (+1: anomalous; -1: nominal)
+
+    y: numpy array
+        Actual classification of each example  ("" "")
+    '''
+    num_examples = len(test_data)
+    X = test_data.drop(columns=['label'])
+    y_class = test_data['label']
+    # get_feedback(label, anom_classes)
+    y = np.zeros(num_examples)
+    y_hat = np.zeros(num_examples)
+    for i in range(num_examples):
+        y[i] = get_feedback(y_class[i], anom_classes)
+    data_iter = tqdm(X.iterrows())
+    for i, example in data_iter:
+        y_hat[i] = np.dot(-weights, example)
+
+    return y_hat, y
+    
+
 def main():
     CIFAR_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
                  'dog', 'frog', 'horse', 'ship', 'truck']
@@ -278,39 +339,57 @@ def main():
         [4, 5, 6, 9],
     ]
 
+    anom_classes = [CIFAR_CLASSES[i] for i in splits[SPLIT]]
+
     # Get datasets of known and unknown classes
     kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test = load_data(SPLIT)
     
     # binary or multiclass category detector??
     kn_ae = get_plain_ae(kn_train, kn_val,'kn_std_ae_split_{}.pth'.format(0))
 
+    ''' <><><><><><><> USE THIS IF YOU NEED AE THAT IS TRAINED ON KN/UNKN <><><><><>
     # Training plain autoencoder on all training data
     kn_unkn_train = torch.utils.data.ConcatDataset([kn_train,unkn_train])
     # This preserves metadata
     # MIGHT NOT NEED kn_unkn_val_frame = pd.concat([kn_val.frame, unkn_val.frame])
-    kn_unkn_val   = torch.utils.data.ConcatDataset([kn_val,  unkn_val  ])
-    kn_unkn_ae = get_plain_ae(kn_unkn_train, kn_unkn_val,
+    kn_unkn_val = torch.utils.data.ConcatDataset([kn_val,  unkn_val  ])
+    kn_unkn_ae  = get_plain_ae(kn_unkn_train, kn_unkn_val,
                               'kn_unkn_std_ae_split_{}.pth'.format(0))
+    '''
 
-    # Get latent set used to train linear anomaly detector from the
-    # validation set comprised of all classes
-    #X, y = construct_latent_set(kn_ae, kn_unkn_val)
-
-    latent_df = construct_latent_set(kn_ae, kn_val, unkn_val)
+    if os.path.isfile('weights.txt'):
+        # Load weights
+        with open('weights.txt', 'rb') as f:
+            w = np.load(f)
+        
+    else:
+        # Get latent set used to train linear anomaly detector from the
+        # validation set comprised of all classes. Note that we are
+        # using the autoencoder trained only on known examples here.
+        latent_df = construct_latent_set(kn_ae, kn_val, unkn_val)
     
-    # NEXT STEP: Use this latent data to train linear anomaly detector!! :)
+        # NEXT STEP: Use this latent data to train linear anomaly detector!! :)
+        w = omd(latent_df, anom_classes)
 
-    anom_classes = [CIFAR_CLASSES[i] for i in splits[SPLIT]]
-    w = omd(latent_df, anom_classes)
+        with open('weights.txt', 'wb') as f:
+            np.save(f, w)
 
-    with open('weights.txt', 'w') as f:
-        f.write(w.__str__())
-
-    print(w)
-
-    # NEXT: Test it.
+    # Construct test set and latentify test examples
+    kn_unkn_test = construct_latent_set(kn_ae, kn_test, unkn_test)
     
-    # build training set (X, y) for supervised latent classifier
+    # Test anomaly detection score on linear model
+    # plot AUC (start general, then move to indiv classes?)
+    y_hat, y_actual = test_results(kn_unkn_test, w, anom_classes)
+    for i, pred in enumerate(y_hat):
+        print('{}  {}'.format(pred, y_actual[i]))
+    # IF BAD, reevaluate LODA initialization
+
+
+
+
+    
+    # NEXT: Run on all 5 anomaly splits.
+    
     
     # Use latent space to train classifier AND as input to scoring function for
     # open category detector g
