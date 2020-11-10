@@ -23,7 +23,6 @@ class Autoencoder(nn.Module):
             nn.ReLU(),
             nn.Conv2d(16, 32, 3, stride=2, padding=1),
             nn.ReLU(),
-            nn.MaxPool2d(2, stride=2, return_indices=True)
             nn.MaxPool2d(4, stride=4, return_indices=True)
             #nn.Conv2d(32, 64, 7)
         )
@@ -49,7 +48,7 @@ class Autoencoder(nn.Module):
         return self.encoder(x)
 
 
-def train(model, device, tr_data, val, num_epochs=10, learning_rate=1e-3):#batch_size=64 
+def train(model, device, tr_data, val, num_epochs=5, learning_rate=1e-3):#batch_size=64 
     torch.manual_seed(42)
     criterion = nn.MSELoss() # mean square error loss
     optimizer = torch.optim.Adam(model.parameters(),
@@ -126,7 +125,7 @@ def training_progression(outputs):
 
 def get_vanilla_ae(tr=None, val=None, filename='plain_ae.pth'):
     CIFAR10_DIM = 32*32
-    NUM_EPOCHS = 7
+    NUM_EPOCHS = 20
 
     tr_loader = torch.utils.data.DataLoader(tr, batch_size=4, shuffle=True, pin_memory=True)
     val_loader = torch.utils.data.DataLoader(val, batch_size=4, shuffle=True, pin_memory=True)

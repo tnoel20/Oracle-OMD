@@ -338,6 +338,9 @@ def main():
     kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test = load_data(SPLIT)
     
     # binary or multiclass category detector??
+
+
+    # WHAT IS ACTUALLY RETURNED HERE???
     kn_ae = get_plain_ae(kn_train, kn_val,'kn_std_ae_split_{}.pth'.format(0))
 
     ''' <><><><><><><> USE THIS IF YOU NEED AE THAT IS TRAINED ON KN/UNKN <><><><><>

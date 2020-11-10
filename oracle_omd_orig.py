@@ -125,7 +125,6 @@ def get_max_anomaly_score(w, D):
     D_X = D.drop(columns=['label']).to_numpy()
     x_curr = np.dot(-w, D_X[0])#D_X.iloc[0])
     x_max = x_curr
-    idx = 0
     for i in range(N):
         x_curr = np.dot(-w, D_X[i])#D_X.iloc[i])
         if x_curr > x_max:
@@ -181,20 +180,32 @@ def get_weight_prior(X_val_latent):
     '''
     #contamination = 0.4 # 6 known classes, 4 unknown using CIFAR10
     #n_bin = len()
-    ##clf_name = 'LODA'
-    ##threshold = 0.01
-    ##data = X_val_latent.drop(columns=['label'])
+    clf_name = 'LODA'
+    threshold = 0.01
+    data = X_val_latent.drop(columns=['label'])
     #num_bins = len(data.iloc[0].tolist())
-    ##clf = LODA()#n_bins=num_bins)
-    ##model = clf.fit(data)
+    clf = LODA()#n_bins=num_bins)
+    model = clf.fit(data)
     #weight_prior = model.histograms_.mean(axis=0)
     #weight_prior = model.projections_.mean(axis=0)
     #weight_prior[weight_prior < threshold] = 1
     #weight_prior[weight_prior != 1] = 0
     #plt.plot(weight_prior)
     #plt.show()
+
+    num_hists = 100
+    num_bins = 10
+    hists = clf.histograms_
+    projs = clf.projections_
+    weight_prior = np.zeros(128)
+    max = 0
+    for bin_i in range(num_bins):
+        for hist in range(num_hists):
+            if hists[hist,bin_i] > hists[max,bin_i]:
+                max = hist
+        weight_prior = np.add(projs[max,:], weight_prior)
     
-    return (1/len(X_val_latent.iloc[0])-1)*np.ones(len(X_val_latent.iloc[0])-1)
+    return weight_prior
 
     # y_val_latent_pred = clf.labels_ # binary (0: inlier, 1: outlier)
     # y_train_scores = clf.decision_scores_ # raw outlier scores
@@ -306,11 +317,7 @@ def test_results(test_data, weights, anom_classes):
         y_hat[i] = np.dot(-weights, example)
 
     return y_hat, y
-
-
-def plot_auroc(y_actual, y_hat):
-    fpr, tpr, thresholds = roc_curve(y_actual, y_hat, pos_label=1)
-    plt.plot(fpr,tpr)
+    
 
 def main():
     CIFAR_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
@@ -348,11 +355,11 @@ def main():
     kn_unkn_val = torch.utils.data.ConcatDataset([kn_val,  unkn_val  ])
     kn_unkn_ae  = get_plain_ae(kn_unkn_train, kn_unkn_val,
                               'kn_unkn_std_ae_split_{}.pth'.format(0))
-
     '''
-    if os.path.isfile('weights_oracle_feedback.txt'):
+
+    if os.path.isfile('weights.txt'):
         # Load weights
-        with open('weights_oracle_feedback.txt', 'rb') as f:
+        with open('weights.txt', 'rb') as f:
             w = np.load(f)
         
     else:
@@ -364,12 +371,9 @@ def main():
         # NEXT STEP: Use this latent data to train linear anomaly detector!! :)
         w = omd(latent_df, anom_classes)
 
-        with open('weights_oracle_feedback.txt', 'wb') as f:
+        with open('weights.txt', 'wb') as f:
             np.save(f, w)
 
-    #latent_df = construct_latent_set(kn_ae, kn_val, unkn_val)
-    
-    
     # Construct test set and latentify test examples
     kn_unkn_test = construct_latent_set(kn_ae, kn_test, unkn_test)
     
@@ -380,8 +384,6 @@ def main():
         print('{}  {}'.format(pred, y_actual[i]))
     # IF BAD, reevaluate LODA initialization
 
-    print('AUROC: {}'.format(roc_auc_score(y_actual, y_hat)))
-    plot_auroc(y_actual, y_hat)
 
 
 
