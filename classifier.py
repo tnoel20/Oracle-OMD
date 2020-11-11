@@ -315,6 +315,7 @@ def train(model, device, tr_data, tr_target, val, val_target, num_epochs=10,\
         with torch.no_grad():
             val_accuracy = get_accuracy(model, val, val_target, device)
             val_accuracy_list.append(val_accuracy)
+            print('dev acc = {}'.format(val_accuracy))
         model.train()
         #val_accuracy_list.append(val_accuracy)
         epoch += 1
