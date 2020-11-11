@@ -9,9 +9,9 @@ from pyod.models.loda import LODA
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, roc_curve
 from oc_data_load import CIFAR10_Data
-from vanilla_ae import get_vanilla_ae
-from oracle_omd import load_data, construct_latent_set, \
-    get_plain_ae, get_feedback
+#from vanilla_ae import get_vanilla_ae
+from classifier import get_resnet_18_classifier
+from oracle_omd import load_data, construct_latent_set, get_feedback
 
 
 def main():
@@ -40,7 +40,7 @@ def main():
     kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test = load_data(SPLIT)
     
     # binary or multiclass category detector??
-    kn_ae = get_plain_ae(kn_train, kn_val,'kn_std_ae_split_{}.pth'.format(0))
+    kn_classifier = get_resnet_18_classifier(kn_train, kn_val)
 
     ''' <><><><><><><> USE THIS IF YOU NEED AE THAT IS TRAINED ON KN/UNKN <><><><><>
     # Training plain autoencoder on all training data
@@ -72,20 +72,24 @@ def main():
     '''
 
     # Constructs latent dataset comprised of known and unknown examples
-    latent_df_train = construct_latent_set(kn_ae, kn_val, unkn_val)
+    latent_df_train = construct_latent_set(kn_classifier, kn_val, unkn_val)
 
     latent_train_X = latent_df_train.drop(columns=['label'])
     clf = LODA()
     loda_model = clf.fit(latent_train_X)
     
     # Construct test set and latentify test examples (mixed known and unknown)
-    latent_df_test = construct_latent_set(kn_ae, kn_test, unkn_test)
+    latent_df_test = construct_latent_set(kn_classifier, kn_test, unkn_test)
     latent_test_X = latent_df_test.drop(columns=['label'])
     y_labels = latent_df_test['label']
     y_actual = np.zeros(len(y_labels))
     y_hat = clf.decision_function(latent_test_X)
 
     for i, label in enumerate(y_labels):
+        # TODO: -CHECK get_feedback TO ENSURE CORRECTNESS
+        #       -Also, try this experiment one more time
+        #       -Also, triple check that anomalous data is being pre-processed
+        #        correctly. Maybe utilize imshow?
         y_actual[i] = get_feedback(label, anom_classes)
     
     # Test anomaly detection score on linear model
@@ -97,11 +101,10 @@ def main():
 
     print('AUROC: {}'.format(roc_auc_score(y_actual, y_hat)))
     fpr, tpr, thresholds = roc_curve(y_actual, y_hat, pos_label=1)
+    print('fpr: {}'.format(fpr))
+    print('tpr: {}'.format(tpr))
     plt.plot(fpr,tpr)
     plt.show()
-
-
-
     
     # NEXT: Run on all 5 anomaly splits.
     

@@ -9,7 +9,8 @@ from pyod.models.loda import LODA
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, roc_curve
 from oc_data_load import CIFAR10_Data
-from vanilla_ae import get_vanilla_ae
+#from vanilla_ae import get_vanilla_ae
+from classifier import get_resnet_18_classifier
 
 
 def load_data(split=0, normalize=False):
@@ -151,7 +152,7 @@ def relu(x):
 def train_oracle_latent_rep():
     pass
 
-
+'''
 def get_plain_ae(kn_train, kn_val, filename='plain_ae.pth'):
     CIFAR10_DIM = 32*32
     NUM_EPOCHS = 20
@@ -159,7 +160,7 @@ def get_plain_ae(kn_train, kn_val, filename='plain_ae.pth'):
     #device = torch.device("cuda")
     model = get_vanilla_ae(kn_train, kn_val, filename)
     return model
-
+'''
 
 def get_weight_prior(X_val_latent):
     '''
@@ -250,7 +251,7 @@ def construct_latent_set(model, kn_dataset, unkn_dataset):
         # If pooling was used, we get data AND indices, so we
         # need "don't care" notation as second returned var
         img_batch = img_batch.to(device)
-        latent_batch, _ = model.get_latent(img_batch)
+        latent_batch = model.get_latent(img_batch)
         embedding = torch.reshape(torch.squeeze(latent_batch), (-1,))
         # TODO: Append this embedding to a pd dataframe with its label
         if col_labels_loaded == False:
@@ -338,7 +339,11 @@ def main():
     kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test = load_data(SPLIT)
     
     # binary or multiclass category detector??
-    kn_ae = get_plain_ae(kn_train, kn_val,'kn_std_ae_split_{}.pth'.format(0))
+
+
+    # WHAT IS ACTUALLY RETURNED HERE???
+    #kn_ae = get_plain_ae(kn_train, kn_val,'kn_std_ae_split_{}.pth'.format(0))
+    kn_classifier = get_resnet_18_classifier(kn_train, kn_val)
 
     ''' <><><><><><><> USE THIS IF YOU NEED AE THAT IS TRAINED ON KN/UNKN <><><><><>
     # Training plain autoencoder on all training data
@@ -359,7 +364,7 @@ def main():
         # Get latent set used to train linear anomaly detector from the
         # validation set comprised of all classes. Note that we are
         # using the autoencoder trained only on known examples here.
-        latent_df = construct_latent_set(kn_ae, kn_val, unkn_val)
+        latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)
     
         # NEXT STEP: Use this latent data to train linear anomaly detector!! :)
         w = omd(latent_df, anom_classes)
@@ -371,7 +376,7 @@ def main():
     
     
     # Construct test set and latentify test examples
-    kn_unkn_test = construct_latent_set(kn_ae, kn_test, unkn_test)
+    kn_unkn_test = construct_latent_set(kn_classifier, kn_test, unkn_test)
     
     # Test anomaly detection score on linear model
     # plot AUC (start general, then move to indiv classes?)

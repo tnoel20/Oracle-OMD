@@ -242,6 +242,9 @@ class ResNet(nn.Module):
         x = self.decoder(x)
         return x
 
+    def get_latent(self, x):
+        return self.encoder(x)
+
     
 def resnet18(in_channels, n_classes):
     return ResNet(in_channels, n_classes, block=ResNetBasicBlock, depths=[2, 2, 2, 2])
@@ -284,11 +287,15 @@ def train(model, device, tr_data, tr_target, val, val_target, num_epochs=10,\
                                  weight_decay=1e-5) # <--
     outputs = []
     epoch = 1
+    target_val_accuracy = 0.9
+    val_accuracy = 0
+    val_accuracy_list = []
     # Initial conditions
     val_loss_list = [1E6, 0]
     EPS = 1e-3
     #for epoch in range(num_epochs):
-    while epoch < num_epochs and abs(val_loss_list[epoch] - val_loss_list[epoch-1]) > EPS:
+    while val_accuracy < target_val_accuracy:
+    #epoch < num_epochs and abs(val_loss_list[epoch] - val_loss_list[epoch-1]) > EPS:
         for i,img_batch in enumerate(tr_data):
             img_batch = img_batch.to(device)
             batch_target = torch.tensor(tr_target[i]).to(device)
@@ -304,8 +311,40 @@ def train(model, device, tr_data, tr_target, val, val_target, num_epochs=10,\
         outputs.append((epoch, img_batch, recon),)
         _, val_loss = get_val_loss(model, val, val_target, device)
         val_loss_list.append(val_loss)
+        model.eval()
+        with torch.no_grad():
+            val_accuracy = get_accuracy(model, val, val_target, device)
+            val_accuracy_list.append(val_accuracy)
+        model.train()
+        #val_accuracy_list.append(val_accuracy)
         epoch += 1
-    return outputs, val_loss_list
+        
+    return outputs, val_loss_list, val_accuracy_list
+
+
+def get_accuracy(model, val, val_target, device):
+    batch_size = len(val_target[0])
+    N = batch_size*len(val_target)
+    num_correct = 0
+    y_hat = []
+    y = []
+    for i, img_batch in enumerate(val):
+        img_batch = img_batch.to(device)
+        #batch_target = torch.tensor(val_target[i]).to(device)
+        prediction = model(img_batch)
+        prediction = prediction.cpu().numpy()
+        for j in range(batch_size):
+            y = val_target[i][j]
+            y_hat = np.argmax(prediction[j])
+            if y_hat == y:
+                num_correct += 1
+        # print('{} {}'.format(prediction[0], batch_target[0]))
+        # if correct
+        #     increment num_correct
+        # else
+        #     move to next
+
+    return num_correct / N
 
 
 # TODO: Fix this...
@@ -372,6 +411,56 @@ def to_class_index(target_set, classes, split, splits, batch_size):
 
     return target_indices
 
+
+def get_resnet_18_classifier(tr=None, val=None, filename='resnet18_classifier_kn.pth'):
+    CIFAR10_DIM = 32*32
+    NUM_EPOCHS = 7
+    NUM_CHANNELS = 3
+    NUM_KNOWN = 6
+    NUM_UNKNOWN = 4
+    BATCH_SIZE = 4
+    CIFAR_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
+                 'dog', 'frog', 'horse', 'ship', 'truck']
+    splits = [
+        [3, 6, 7, 8],
+        [1, 2, 4, 6],
+        [2, 3, 4, 9],
+        [0, 1, 2, 6],
+        [4, 5, 6, 9],
+    ]
+
+    #print('Number of target batches: {}'.format(len(tr_target)))
+
+    #imshow(kn_train.__getitem__(4))
+    #print(tr_target[1][0])
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = resnet18(NUM_CHANNELS, NUM_KNOWN).to(device)
+    
+    if os.path.isfile(filename):
+        # Load model
+        model.load_state_dict(torch.load(filename))
+        model.eval()
+        
+    else:
+        tr_loader = torch.utils.data.DataLoader(kn_train, batch_size=BATCH_SIZE, \
+                                            shuffle=False, pin_memory=True)
+        val_loader = torch.utils.data.DataLoader(kn_val, batch_size=BATCH_SIZE, shuffle=False, \
+                                             pin_memory=True)
+
+        tr_target = kn_train.frame['label'].tolist()
+        val_target = kn_val.frame['label'].tolist()
+
+        tr_target = to_class_index(tr_target, CIFAR_CLASSES, SPLIT, splits, BATCH_SIZE)
+        val_target = to_class_index(val_target, CIFAR_CLASSES, SPLIT, splits, BATCH_SIZE)
+        
+        # Train model
+        outputs, val_loss = train(model, device, tr_loader, tr_target,\
+                                  val_loader, val_target, num_epochs=NUM_EPOCHS)
+        torch.save(model.state_dict(), filename)
+
+    return model
+
     
 def main():
     CIFAR_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
@@ -430,7 +519,7 @@ def main():
         model.eval()
     else:
         # Train model
-        outputs, val_loss = train(model, device, tr_loader, tr_target,\
+        outputs, val_loss, val_acc = train(model, device, tr_loader, tr_target,\
                                   val_loader, val_target, num_epochs=NUM_EPOCHS)
         torch.save(model.state_dict(), FILENAME)
     
