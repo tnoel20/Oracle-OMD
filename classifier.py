@@ -287,7 +287,7 @@ def train(model, device, tr_data, tr_target, val, val_target, num_epochs=10,\
                                  weight_decay=1e-5) # <--
     outputs = []
     epoch = 1
-    target_val_accuracy = 0.9
+    target_val_accuracy = 0.8
     val_accuracy = 0
     val_accuracy_list = []
     # Initial conditions
