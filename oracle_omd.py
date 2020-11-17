@@ -88,6 +88,7 @@ def omd(data, anom_classes, learning_rate=1e-3):
     N = len(data)
     # TODO: Initialize this with LODA values
     theta = get_weight_prior(data)#np.ones(len(data.iloc[0].tolist())-1)
+    print('Weight Prior: {}'.format(theta))
     # Note that this is usually implemented as an
     # online algorithm so number of time steps (steps
     # of this outer loop) are usually ambiguous. Here
@@ -180,6 +181,30 @@ def get_weight_prior(X_val_latent):
     given latent representation from a model trained on only 6.
     
     '''
+    X = X_val_latent.drop(columns=['label'])
+    N = len(X)
+    n_features = len(X.iloc[0])
+    t_vec = []
+    n_bin = N // 50
+    n_rand_proj = N // 2
+    clf = LODA(n_bins=n_bin, n_random_cuts=n_rand_proj)
+    model = clf.fit(X)
+    hists = model.histograms_
+    projections = model.projections_
+    features_used = feature_use(projections)
+    for i in range(n_features):
+        Ij      = np.nonzero(features_used[:,i] == 1)[0]
+        Ij_bar  = np.nonzero(features_used[:,i] == 0)[0]
+        used_size   = len(Ij)
+        unused_size = len(Ij_bar)
+        print('Ij length: {}'.format(len(Ij)))
+        print('Ij_bar length: {}'.format(len(Ij_bar)))
+        mu_j, var_j = get_stats(model, i, Ij, X)
+        bar_mu_j, bar_var_j = get_stats(model, i, Ij_bar, X)
+        t_vec.append((mu_j-bar_mu_j)/((var_j/used_size)+(bar_var_j/unused_size)))
+
+    print(len(t_vec) == n_features)
+    return t_vec.to_numpy()
     #contamination = 0.4 # 6 known classes, 4 unknown using CIFAR10
     #n_bin = len()
     ##clf_name = 'LODA'
@@ -194,8 +219,7 @@ def get_weight_prior(X_val_latent):
     #weight_prior[weight_prior != 1] = 0
     #plt.plot(weight_prior)
     #plt.show()
-    
-    return (1/len(X_val_latent.iloc[0])-1)*np.ones(len(X_val_latent.iloc[0])-1)
+    #return (1/len(X_val_latent.iloc[0])-1)*np.ones(len(X_val_latent.iloc[0])-1)
 
     # y_val_latent_pred = clf.labels_ # binary (0: inlier, 1: outlier)
     # y_train_scores = clf.decision_scores_ # raw outlier scores
@@ -203,6 +227,47 @@ def get_weight_prior(X_val_latent):
     #return clf.get_params() # By default deep=True
 
 
+def feature_use(projections):
+    num_proj = len(projections)
+    num_features = len(projections[0])
+    use_matrix = np.zeros((num_proj, num_features))
+    for i in range(num_proj):
+        for j in range(num_features):
+            if projections[i][j] != 0:
+                use_matrix[i][j] = 1
+
+    return use_matrix
+
+
+def get_stats(model, feat_idx, ensemble_indices, X_df):
+    '''Extracts t-statistic mentioned in Pevny's paper; Mean and variance
+    calculations need to be verfied. Currently averaging across all
+    probability mappings for all samples for a given feature to calculate
+    mean and variance of the negative log probabilities.'''
+    X = X_df.to_numpy()
+    projections = model.projections_
+    histograms  = model.histograms_
+    num_samples = len(X)
+    n_projections = len(projections)
+    mean = np.zeros(num_samples)#n_projections)
+    var = np.zeros(num_samples)#n_projections)
+    neg_log_probs = np.zeros((n_projections, num_samples))
+    for i in range(n_projections):
+        if i in ensemble_indices:
+            projected_data = projections[i, :].dot(X.T)
+            inds = np.searchsorted(model.limits_[i, :model.n_bins - 1],
+                                   projected_data, side='left')
+            neg_log_probs[i, inds] = -np.log(model.histograms_[i, inds])
+
+    # Gives us mean -log\hat{p} across all ensemble bins
+    # for each sample
+    for i in range(num_samples):
+        mean[i] = np.mean(neg_log_probs[:,i])
+        var[i] = np.var(neg_log_probs[:,i])
+
+    return np.mean(mean), np.var(var)
+
+                     
 def construct_column_labels(data_sample):
     '''Builds a list of labels that will be used to label
     columns in dataframe representing latent data'''

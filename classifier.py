@@ -516,7 +516,7 @@ def main():
     
     if os.path.isfile(FILENAME):
         # Load model
-        model.load_state_dict(torch.load(FILENAME))
+        model.load_state_dict(torch.jit.load(FILENAME))#load(FILENAME))
         model.eval()
     else:
         # Train model

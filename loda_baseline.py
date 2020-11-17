@@ -75,7 +75,7 @@ def main():
     latent_df_train = construct_latent_set(kn_classifier, kn_val, unkn_val)
 
     latent_train_X = latent_df_train.drop(columns=['label'])
-    clf = LODA()
+    clf = LODA(n_bins=len(latent_train_X)//50, n_random_cuts=26000)
     loda_model = clf.fit(latent_train_X)
     
     # Construct test set and latentify test examples (mixed known and unknown)
@@ -83,7 +83,7 @@ def main():
     latent_test_X = latent_df_test.drop(columns=['label'])
     y_labels = latent_df_test['label']
     y_actual = np.zeros(len(y_labels))
-    y_hat = clf.decision_function(latent_test_X)
+    y_hat = -clf.decision_function(latent_test_X)
 
     for i, label in enumerate(y_labels):
         # TODO: -CHECK get_feedback TO ENSURE CORRECTNESS
@@ -105,6 +105,7 @@ def main():
     print('tpr: {}'.format(tpr))
     plt.plot(fpr,tpr)
     plt.show()
+    print(loda_model.histograms_)
     
     # NEXT: Run on all 5 anomaly splits.
     
