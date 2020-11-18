@@ -5,6 +5,7 @@ import torchvision
 import torchvision.transforms as T
 import pandas as pd
 import os
+import math
 from pyod.models.loda import LODA
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, roc_curve
@@ -70,7 +71,7 @@ def load_data(split=0, normalize=False):
     return (kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test)
 
 
-def omd(data, anom_classes, learning_rate=1e-3):
+def omd(latent_data, anom_classes, learning_rate=1e-3):
     '''
     Training a linear anomaly detector
 
@@ -85,9 +86,10 @@ def omd(data, anom_classes, learning_rate=1e-3):
                   to anomaly classification (should
                   be a list of unique strings)
     '''
-    N = len(data)
+    N = len(latent_data)
     # TODO: Initialize this with LODA values
-    theta = get_weight_prior(data)#np.ones(len(data.iloc[0].tolist())-1)
+    theta, clf = get_weight_prior(latent_data)#np.ones(len(data.iloc[0].tolist())-1)
+    data = loda_transform(clf, latent_data)
     print('Weight Prior: {}'.format(theta))
     # Note that this is usually implemented as an
     # online algorithm so number of time steps (steps
@@ -106,6 +108,42 @@ def omd(data, anom_classes, learning_rate=1e-3):
         theta = theta - learning_rate*y*d_anom
 
     return w
+
+
+def loda_transform(loda_clf, data_df):
+    '''
+    For each training example, for each histogram, project training
+    example into appropriate histogram bin. Mark this bin as 1 and
+    the rest as zero and then proceed to multiply the resulting
+    vector by the negative log probability associated with the
+    histogram bin. Finally ravel the constructed modified
+    histogram matrix; this yields one processed training example.
+    '''
+    N = len(data_df) 
+    X = data_df.drop(columns=['label'])
+    hists = loda_clf.histograms_
+    num_hists = len(hists)
+    data = X.to_numpy()
+    transformed_data = np.zeros(N)
+    for i in range(N):
+        # Create a copy that we can modify to yield
+        # the ith training example
+        ith_hists = hists
+        for j in range(num_hists):
+            projected_data = loda_clf.projections_[j,:].dot(data[i])
+            # Assumes that this also works for finding a single index
+            ind = np.searchsorted(loda_clf.limits_[i, :loda_clf.n_bins - 1],
+                                  projected_data, side='left')
+            print(ith_hists[j,ind])
+            wj = -math.log2(ith_hists[j,ind])
+            ith_hists[j,ind] = 1
+            zero_inds = np.where(ith_hists[j] != 1)
+            ith_hists[j,zero_inds] = 0
+            ith_hists[j] *= wj
+
+        tranformed_data[i] = np.ravel(ith_hists)
+
+    return transformed_data
 
 
 def get_feedback(label, anom_classes):
@@ -153,7 +191,7 @@ def relu(x):
 def train_oracle_latent_rep():
     pass
 
-'''
+
 def get_plain_ae(kn_train, kn_val, filename='plain_ae.pth'):
     CIFAR10_DIM = 32*32
     NUM_EPOCHS = 20
@@ -161,9 +199,9 @@ def get_plain_ae(kn_train, kn_val, filename='plain_ae.pth'):
     #device = torch.device("cuda")
     model = get_vanilla_ae(kn_train, kn_val, filename)
     return model
-'''
 
-def get_weight_prior(X_val_latent):
+
+def get_weight_prior(X_latent):
     '''
     Get weight vector prior using LODA (Pevny16)
     
@@ -176,7 +214,49 @@ def get_weight_prior(X_val_latent):
 
     Returns
     -------
-    learned weights associated with each latent feature. Used as the
+    ndarray: Concatenated one-hot histogram vectors, where a given bin
+    is a 1 if it has the greatest probability. Used as the
+    prior in training a linear anomaly detector on all classes
+    given latent representation from a model trained on only 6.
+
+    object: Fitted LODA estimator (to be used benevolently).
+    '''
+
+    X = X_latent.drop(columns=['label'])
+    n_bins = 10
+    n_random_proj = 100
+    clf = LODA(n_bins=n_bins, n_random_cuts=n_random_proj)
+    model = clf.fit(X)
+    hists = model.histograms_
+    weight_prior = model.histograms_
+    # For each histogram, get max element index, and calculate
+    # -log(\hat{p}), where \hat{p} is the value of the max element
+    for i in range(n_random_proj):
+        max_ind = np.argmax(hists[i])
+        # Calculate the weight associated with this element
+        wi = -math.log2(hists[i,max_ind])
+        weight_prior[i,max_ind] = 1
+        zero_inds = np.where(hists[i] != 1)
+        weight_prior[i,zero_inds] = 0
+        weight_prior[i] *= wi
+
+    return np.ravel(weight_prior), model 
+         
+
+def get_features_t_stats(X_latent):
+    '''
+    Get weight vector prior using LODA (Pevny16)
+    
+    Parameters
+    ----------
+    X_val_latent : numpy array
+        Describes the latent representation of images in the
+        validation set. Note: This contains known and unknown
+        examples.
+
+    Returns
+    -------
+    t-stat associated with each feature. Used as the
     prior in training a linear anomaly detector on all classes
     given latent representation from a model trained on only 6.
     
@@ -205,26 +285,6 @@ def get_weight_prior(X_val_latent):
 
     print(len(t_vec) == n_features)
     return t_vec.to_numpy()
-    #contamination = 0.4 # 6 known classes, 4 unknown using CIFAR10
-    #n_bin = len()
-    ##clf_name = 'LODA'
-    ##threshold = 0.01
-    ##data = X_val_latent.drop(columns=['label'])
-    #num_bins = len(data.iloc[0].tolist())
-    ##clf = LODA()#n_bins=num_bins)
-    ##model = clf.fit(data)
-    #weight_prior = model.histograms_.mean(axis=0)
-    #weight_prior = model.projections_.mean(axis=0)
-    #weight_prior[weight_prior < threshold] = 1
-    #weight_prior[weight_prior != 1] = 0
-    #plt.plot(weight_prior)
-    #plt.show()
-    #return (1/len(X_val_latent.iloc[0])-1)*np.ones(len(X_val_latent.iloc[0])-1)
-
-    # y_val_latent_pred = clf.labels_ # binary (0: inlier, 1: outlier)
-    # y_train_scores = clf.decision_scores_ # raw outlier scores
-
-    #return clf.get_params() # By default deep=True
 
 
 def feature_use(projections):
@@ -405,7 +465,6 @@ def main():
     
     # binary or multiclass category detector??
 
-
     # WHAT IS ACTUALLY RETURNED HERE???
     #kn_ae = get_plain_ae(kn_train, kn_val,'kn_std_ae_split_{}.pth'.format(0))
     kn_classifier = get_resnet_18_classifier(kn_train, kn_val)
@@ -429,7 +488,8 @@ def main():
         # Get latent set used to train linear anomaly detector from the
         # validation set comprised of all classes. Note that we are
         # using the autoencoder trained only on known examples here.
-        latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)
+        latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)#kn_train, unkn_train)
+        ## latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)
     
         # NEXT STEP: Use this latent data to train linear anomaly detector!! :)
         w = omd(latent_df, anom_classes)
