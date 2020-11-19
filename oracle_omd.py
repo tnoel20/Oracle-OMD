@@ -87,6 +87,7 @@ def omd(latent_data, anom_classes, learning_rate=1e-3):
                   be a list of unique strings)
     '''
     N = len(latent_data)
+    labels = latent_data['label']
     # TODO: Initialize this with LODA values
     theta, clf = get_weight_prior(latent_data)#np.ones(len(data.iloc[0].tolist())-1)
     data = loda_transform(clf, latent_data)
@@ -101,13 +102,15 @@ def omd(latent_data, anom_classes, learning_rate=1e-3):
     for i in range(N):
         w = get_nearest_w(theta)
         d_anom, idx = get_max_anomaly_score(w, data)
-        y = get_feedback(data.iloc[i]['label'], anom_classes)
-        data.drop(data.index[idx])
+        y = get_feedback(labels.iloc[i], anom_classes)
+        # TAG
+        #data.drop(data.index[idx])
+        np.delete(data, idx)
         # linear loss function
         # loss = -y*np.dot(w,d_anom)
         theta = theta - learning_rate*y*d_anom
 
-    return w
+    return w, clf
 
 
 def loda_transform(loda_clf, data_df):
@@ -124,26 +127,32 @@ def loda_transform(loda_clf, data_df):
     hists = loda_clf.histograms_
     num_hists = len(hists)
     data = X.to_numpy()
-    transformed_data = np.zeros(N)
+    #transformed_data = np.zeros(N)
+    transformed_data = []
     for i in range(N):
         # Create a copy that we can modify to yield
         # the ith training example
         ith_hists = hists
         for j in range(num_hists):
+            wj = 0
             projected_data = loda_clf.projections_[j,:].dot(data[i])
             # Assumes that this also works for finding a single index
-            ind = np.searchsorted(loda_clf.limits_[i, :loda_clf.n_bins - 1],
+            ind = np.searchsorted(loda_clf.limits_[j, :loda_clf.n_bins - 1],
                                   projected_data, side='left')
-            print(ith_hists[j,ind])
-            wj = -math.log2(ith_hists[j,ind])
+            #print(ith_hists[j,ind])
+            if ith_hists[j,ind] > 0:
+            	wj = -math.log2(ith_hists[j,ind])
             ith_hists[j,ind] = 1
             zero_inds = np.where(ith_hists[j] != 1)
+            print(ith_hists[j])
             ith_hists[j,zero_inds] = 0
+            print(wj)
             ith_hists[j] *= wj
 
-        tranformed_data[i] = np.ravel(ith_hists)
+        #tranformed_data[i] = np.ravel(ith_hists)
+        transformed_data.append(np.ravel(ith_hists))         
 
-    return transformed_data
+    return np.array(transformed_data)
 
 
 def get_feedback(label, anom_classes):
@@ -158,11 +167,11 @@ def get_feedback(label, anom_classes):
     return y
 
         
-def get_max_anomaly_score(w, D):
+def get_max_anomaly_score(w, D_X):
     '''Returns the element in the dataset
     with the largest anomaly score    '''
-    N = len(D)
-    D_X = D.drop(columns=['label']).to_numpy()
+    N = len(D_X)
+    #D_X = D.drop(columns=['label']).to_numpy()
     x_curr = np.dot(-w, D_X[0])#D_X.iloc[0])
     x_max = x_curr
     idx = 0
@@ -394,7 +403,7 @@ def construct_latent_set(model, kn_dataset, unkn_dataset):
     return val_latent_rep_df
 
 
-def test_results(test_data, weights, anom_classes):
+def test_results(test_data, weights, y_class, anom_classes):
     '''
     Tests the linear anomaly detector on the test
     data specified.
@@ -420,15 +429,15 @@ def test_results(test_data, weights, anom_classes):
         Actual classification of each example  ("" "")
     '''
     num_examples = len(test_data)
-    X = test_data.drop(columns=['label'])
-    y_class = test_data['label']
+    X = test_data#.drop(columns=['label'])
+    #y_class = test_data['label']
     # get_feedback(label, anom_classes)
     y = np.zeros(num_examples)
     y_hat = np.zeros(num_examples)
     for i in range(num_examples):
         y[i] = get_feedback(y_class[i], anom_classes)
-    data_iter = tqdm(X.iterrows())
-    for i, example in data_iter:
+    #data_iter = tqdm(X.iterrows())
+    for i, example in enumerate(X):
         y_hat[i] = np.dot(-weights, example)
 
     return y_hat, y
@@ -479,33 +488,36 @@ def main():
                               'kn_unkn_std_ae_split_{}.pth'.format(0))
 
     '''
-    if os.path.isfile('weights_oracle_feedback.txt'):
-        # Load weights
-        with open('weights_oracle_feedback.txt', 'rb') as f:
-            w = np.load(f)
+    #if os.path.isfile('weights_oracle_feedback.txt'):
+    #    # Load weights
+    #    with open('weights_oracle_feedback.txt', 'rb') as f:
+    #        w = np.load(f)
         
-    else:
-        # Get latent set used to train linear anomaly detector from the
-        # validation set comprised of all classes. Note that we are
-        # using the autoencoder trained only on known examples here.
-        latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)#kn_train, unkn_train)
-        ## latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)
+    #else:
+    # Get latent set used to train linear anomaly detector from the
+    # validation set comprised of all classes. Note that we are
+    # using the autoencoder trained only on known examples here.
+    latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)#kn_train, unkn_train)
+    ## latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)
     
-        # NEXT STEP: Use this latent data to train linear anomaly detector!! :)
-        w = omd(latent_df, anom_classes)
+    # NEXT STEP: Use this latent data to train linear anomaly detector!! :)
+    w, clf = omd(latent_df, anom_classes)
 
-        with open('weights_oracle_feedback.txt', 'wb') as f:
-            np.save(f, w)
+    #with open('weights_oracle_feedback.txt', 'wb') as f:
+    #    np.save(f, w)
+    # END ELSE
 
     #latent_df = construct_latent_set(kn_ae, kn_val, unkn_val)
     
     
     # Construct test set and latentify test examples
     kn_unkn_test = construct_latent_set(kn_classifier, kn_test, unkn_test)
+    test_target = kn_unkn_test['label']
+    kn_unkn_test_trans = loda_transform(clf, kn_unkn_test)
     
     # Test anomaly detection score on linear model
     # plot AUC (start general, then move to indiv classes?)
-    y_hat, y_actual = test_results(kn_unkn_test, w, anom_classes)
+    y_hat, y_actual = test_results(kn_unkn_test_trans, w, test_target, anom_classes)
     for i, pred in enumerate(y_hat):
         print('{}  {}'.format(pred, y_actual[i]))
     # IF BAD, reevaluate LODA initialization
