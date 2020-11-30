@@ -71,7 +71,7 @@ def load_data(split=0, normalize=False):
     return (kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test)
 
 
-def omd(latent_data, anom_classes, learning_rate=1e-3):
+def omd(latent_data, anom_classes, learning_rate=1e-2):
     '''
     Training a linear anomaly detector
 
@@ -87,6 +87,7 @@ def omd(latent_data, anom_classes, learning_rate=1e-3):
                   be a list of unique strings)
     '''
     N = len(latent_data)
+    T = 1000#=N
     labels = latent_data['label']
     # TODO: Initialize this with LODA values
     theta, clf = get_weight_prior(latent_data)#np.ones(len(data.iloc[0].tolist())-1)
@@ -99,10 +100,10 @@ def omd(latent_data, anom_classes, learning_rate=1e-3):
     # will start by running a single epoch over the
     # dataset
     # TODO: Mess around with reducing this number
-    for i in range(N):
+    for i in range(T):
         w = get_nearest_w(theta)
         d_anom, idx = get_max_anomaly_score(w, data)
-        y = get_feedback(labels.iloc[i], anom_classes)
+        y = get_feedback(labels.iloc[idx], anom_classes)
         # TAG
         #data.drop(data.index[idx])
         np.delete(data, idx)
@@ -132,26 +133,30 @@ def loda_transform(loda_clf, data_df):
     for i in range(N):
         # Create a copy that we can modify to yield
         # the ith training example
-        ith_hists = hists
+        ith_hists = np.copy(hists)
         for j in range(num_hists):
             wj = 0
             projected_data = loda_clf.projections_[j,:].dot(data[i])
             # Assumes that this also works for finding a single index
             ind = np.searchsorted(loda_clf.limits_[j, :loda_clf.n_bins - 1],
                                   projected_data, side='left')
+            # This is currently zero...
             #print(ith_hists[j,ind])
             if ith_hists[j,ind] > 0:
-            	wj = -math.log2(ith_hists[j,ind])
+                #print("Updating wj")
+                wj = -math.log2(ith_hists[j,ind])
             ith_hists[j,ind] = 1
-            zero_inds = np.where(ith_hists[j] != 1)
-            print(ith_hists[j])
-            ith_hists[j,zero_inds] = 0
-            print(wj)
+            #zero_inds = np.where(ith_hists[j] != 1)
+            #print(ith_hists[j])
+            #ith_hists[j, np.arange(len(ith_hists[i]))!=ind] = 0 
+            ith_hists[j, np.arange(len(ith_hists[j]))!=ind] = 0
+            #print(wj)
             ith_hists[j] *= wj
 
         #tranformed_data[i] = np.ravel(ith_hists)
         transformed_data.append(np.ravel(ith_hists))         
 
+    #print(transformed_data)
     return np.array(transformed_data)
 
 
@@ -172,12 +177,14 @@ def get_max_anomaly_score(w, D_X):
     with the largest anomaly score    '''
     N = len(D_X)
     #D_X = D.drop(columns=['label']).to_numpy()
-    x_curr = np.dot(-w, D_X[0])#D_X.iloc[0])
+    x_curr = np.dot(-w, D_X[0])#-w, D_X[0])#D_X.iloc[0])
     x_max = x_curr
     idx = 0
     for i in range(N):
-        x_curr = np.dot(-w, D_X[i])#D_X.iloc[i])
+        x_curr = np.dot(-w, D_X[i])#-w, D_X[i])#D_X.iloc[i])
+        print('x_curr: {}'.format(x_curr))
         if x_curr > x_max:
+            print('x_curr is new x_max!------------------------------------------------------')
             x_max = x_curr
             idx = i
 
@@ -191,8 +198,9 @@ def get_nearest_w(theta):
     return relu(theta)
 
 
-def relu(x):
+def relu(x_vec):
     '''Just makes negative elements 0'''
+    x = np.copy(x_vec)
     x[x < 0] = 0
     return x
 
@@ -227,8 +235,7 @@ def get_weight_prior(X_latent):
     is a 1 if it has the greatest probability. Used as the
     prior in training a linear anomaly detector on all classes
     given latent representation from a model trained on only 6.
-
-    object: Fitted LODA estimator (to be used benevolently).
+    object: Fitted LODA estimator.
     '''
 
     X = X_latent.drop(columns=['label'])
@@ -237,16 +244,30 @@ def get_weight_prior(X_latent):
     clf = LODA(n_bins=n_bins, n_random_cuts=n_random_proj)
     model = clf.fit(X)
     hists = model.histograms_
-    weight_prior = model.histograms_
+    weight_prior = np.copy(model.histograms_)
+    #print('hists: {}'.format(hists))
+    #print('hists shape: {}'.format(hists.shape))
+    #print('weight_prior: {}'.format(weight_prior))
+    #print('weight_prior shape: {}'.format(weight_prior.shape))
     # For each histogram, get max element index, and calculate
     # -log(\hat{p}), where \hat{p} is the value of the max element
     for i in range(n_random_proj):
+        print(weight_prior[i])
         max_ind = np.argmax(hists[i])
+        print('max_ind: {}'.format(max_ind))
         # Calculate the weight associated with this element
+        #print('histogram: {}'.format(hists[i]))
+        #print('In weight prior: arg of log2: {}'.format(hists[i,max_ind]))
         wi = -math.log2(hists[i,max_ind])
+        #print('wi: {}'.format(wi))
+        #print('weight_prior (before step 1): {}'.format(weight_prior))
         weight_prior[i,max_ind] = 1
-        zero_inds = np.where(hists[i] != 1)
-        weight_prior[i,zero_inds] = 0
+        #print('weight_prior (after step 1): {}'.format(weight_prior))
+        #print('model hists: {}'.format(hists))
+        ##zero_inds = np.arange(len(weight_prior[i])) != max_ind
+        weight_prior[i, np.arange(len(weight_prior[i]))!=max_ind] = 0 
+        #print('weight_prior (step 2): {}'.format(weight_prior))
+        #print('model hists: {}'.format(hists))
         weight_prior[i] *= wi
 
     return np.ravel(weight_prior), model 
@@ -422,7 +443,7 @@ def test_results(test_data, weights, y_class, anom_classes):
 
     Returns
     -------
-    y_hat: numpy array
+    scores: numpy array
         Classifications on a per-example basis (+1: anomalous; -1: nominal)
 
     y: numpy array
@@ -433,19 +454,20 @@ def test_results(test_data, weights, y_class, anom_classes):
     #y_class = test_data['label']
     # get_feedback(label, anom_classes)
     y = np.zeros(num_examples)
-    y_hat = np.zeros(num_examples)
+    scores = np.zeros(num_examples)
     for i in range(num_examples):
         y[i] = get_feedback(y_class[i], anom_classes)
     #data_iter = tqdm(X.iterrows())
     for i, example in enumerate(X):
-        y_hat[i] = np.dot(-weights, example)
+        scores[i] = np.dot(-weights, example)#-weights, example)
 
-    return y_hat, y
+    return scores, y
 
 
-def plot_auroc(y_actual, y_hat):
-    fpr, tpr, thresholds = roc_curve(y_actual, y_hat, pos_label=1)
+def plot_auroc(y_actual, scores):
+    fpr, tpr, thresholds = roc_curve(y_actual, scores, pos_label=1)
     plt.plot(fpr,tpr)
+    plt.show()
 
 def main():
     CIFAR_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
@@ -517,13 +539,13 @@ def main():
     
     # Test anomaly detection score on linear model
     # plot AUC (start general, then move to indiv classes?)
-    y_hat, y_actual = test_results(kn_unkn_test_trans, w, test_target, anom_classes)
-    for i, pred in enumerate(y_hat):
+    scores, y_actual = test_results(kn_unkn_test_trans, w, test_target, anom_classes)
+    for i, pred in enumerate(scores):
         print('{}  {}'.format(pred, y_actual[i]))
     # IF BAD, reevaluate LODA initialization
 
-    print('AUROC: {}'.format(roc_auc_score(y_actual, y_hat)))
-    plot_auroc(y_actual, y_hat)
+    print('AUROC: {}'.format(roc_auc_score(y_actual, scores)))
+    plot_auroc(y_actual, scores)
 
 
 
