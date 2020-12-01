@@ -71,7 +71,7 @@ def load_data(split=0, normalize=False):
     return (kn_train, kn_val, kn_test, unkn_train, unkn_val, unkn_test)
 
 
-def omd(latent_data, anom_classes, learning_rate=1e-2):
+def omd(train_latent_data, latent_data, anom_classes, learning_rate=1e-2):
     '''
     Training a linear anomaly detector
 
@@ -90,7 +90,7 @@ def omd(latent_data, anom_classes, learning_rate=1e-2):
     T = 1000#=N
     labels = latent_data['label']
     # TODO: Initialize this with LODA values
-    theta, clf = get_weight_prior(latent_data)#np.ones(len(data.iloc[0].tolist())-1)
+    theta, clf = get_weight_prior(train_latent_data)
     data = loda_transform(clf, latent_data)
     print('Weight Prior: {}'.format(theta))
     # Note that this is usually implemented as an
@@ -109,7 +109,7 @@ def omd(latent_data, anom_classes, learning_rate=1e-2):
         np.delete(data, idx)
         # linear loss function
         # loss = -y*np.dot(w,d_anom)
-        theta = theta - learning_rate*y*d_anom
+        theta = theta + learning_rate*y*d_anom#- learning_rate*y*d_anom
 
     return w, clf
 
@@ -142,16 +142,16 @@ def loda_transform(loda_clf, data_df):
                                   projected_data, side='left')
             # This is currently zero...
             #print(ith_hists[j,ind])
-            if ith_hists[j,ind] > 0:
+            ##if ith_hists[j,ind] > 0:
                 #print("Updating wj")
-                wj = -math.log2(ith_hists[j,ind])
+                ##wj = -math.log2(ith_hists[j,ind])
             ith_hists[j,ind] = 1
             #zero_inds = np.where(ith_hists[j] != 1)
             #print(ith_hists[j])
             #ith_hists[j, np.arange(len(ith_hists[i]))!=ind] = 0 
             ith_hists[j, np.arange(len(ith_hists[j]))!=ind] = 0
             #print(wj)
-            ith_hists[j] *= wj
+            ##ith_hists[j] *= wj
 
         #tranformed_data[i] = np.ravel(ith_hists)
         transformed_data.append(np.ravel(ith_hists))         
@@ -177,11 +177,11 @@ def get_max_anomaly_score(w, D_X):
     with the largest anomaly score    '''
     N = len(D_X)
     #D_X = D.drop(columns=['label']).to_numpy()
-    x_curr = np.dot(-w, D_X[0])#-w, D_X[0])#D_X.iloc[0])
+    x_curr = np.dot(w, D_X[0])#-w, D_X[0])#D_X.iloc[0])
     x_max = x_curr
     idx = 0
     for i in range(N):
-        x_curr = np.dot(-w, D_X[i])#-w, D_X[i])#D_X.iloc[i])
+        x_curr = np.dot(w, D_X[i])#-w, D_X[i])#D_X.iloc[i])
         print('x_curr: {}'.format(x_curr))
         if x_curr > x_max:
             print('x_curr is new x_max!------------------------------------------------------')
@@ -245,30 +245,31 @@ def get_weight_prior(X_latent):
     model = clf.fit(X)
     hists = model.histograms_
     weight_prior = np.copy(model.histograms_)
+    weight_prior = np.log2(weight_prior)
     #print('hists: {}'.format(hists))
     #print('hists shape: {}'.format(hists.shape))
     #print('weight_prior: {}'.format(weight_prior))
     #print('weight_prior shape: {}'.format(weight_prior.shape))
     # For each histogram, get max element index, and calculate
     # -log(\hat{p}), where \hat{p} is the value of the max element
-    for i in range(n_random_proj):
-        print(weight_prior[i])
-        max_ind = np.argmax(hists[i])
-        print('max_ind: {}'.format(max_ind))
+    ##for i in range(n_random_proj):
+        #print(weight_prior[i])
+        #max_ind = np.argmax(hists[i])
+        #print('max_ind: {}'.format(max_ind))
         # Calculate the weight associated with this element
         #print('histogram: {}'.format(hists[i]))
         #print('In weight prior: arg of log2: {}'.format(hists[i,max_ind]))
-        wi = -math.log2(hists[i,max_ind])
+        ##log_probs = -math.log2(hists[i,max_ind])
         #print('wi: {}'.format(wi))
         #print('weight_prior (before step 1): {}'.format(weight_prior))
-        weight_prior[i,max_ind] = 1
+        ##weight_prior[i,max_ind] = 1
         #print('weight_prior (after step 1): {}'.format(weight_prior))
         #print('model hists: {}'.format(hists))
         ##zero_inds = np.arange(len(weight_prior[i])) != max_ind
-        weight_prior[i, np.arange(len(weight_prior[i]))!=max_ind] = 0 
+        ##weight_prior[i, np.arange(len(weight_prior[i]))!=max_ind] = 0 
         #print('weight_prior (step 2): {}'.format(weight_prior))
         #print('model hists: {}'.format(hists))
-        weight_prior[i] *= wi
+        ##weight_prior[i] *= wi
 
     return np.ravel(weight_prior), model 
          
@@ -519,11 +520,14 @@ def main():
     # Get latent set used to train linear anomaly detector from the
     # validation set comprised of all classes. Note that we are
     # using the autoencoder trained only on known examples here.
-    latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)#kn_train, unkn_train)
+    train_latent_df  = construct_latent_set(kn_classifier, kn_train, unkn_train)
+    val_latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)#kn_train, unkn_train)
     ## latent_df = construct_latent_set(kn_classifier, kn_val, unkn_val)
     
     # NEXT STEP: Use this latent data to train linear anomaly detector!! :)
-    w, clf = omd(latent_df, anom_classes)
+
+    # Note that the train_latent_df is used for determining the initial weight vector
+    w, clf = omd(train_latent_df, val_latent_df, anom_classes)
 
     #with open('weights_oracle_feedback.txt', 'wb') as f:
     #    np.save(f, w)
